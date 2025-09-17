@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "Receitas Backend",
+    "_postman_id": "d7b0a84c-3d1e-4f2a-8dbb-123456789abc",
+    "description": "Coleção de testes para o backend de usuários e afiliados.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Registrar Usuário",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"first_name\": \"Eduardo\",\n  \"last_name\": \"Eloi\",\n  \"email\": \"edu@teste.com\",\n  \"phone\": \"15992675429\",\n  \"birth_date\": \"1992-05-06\",\n  \"password\": \"123456\",\n  \"referred_by\": null\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/users/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users", "register"]
+        }
+      }
+    },
+    {
+      "name": "Login Usuário",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"edu@teste.com\",\n  \"password\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/users/login",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users", "login"]
+        }
+      }
+    },
+    {
+      "name": "Listar Usuários",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:3000/api/users",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users"]
+        }
+      }
+    },
+    {
+      "name": "Buscar Usuário por ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:3000/api/users/1",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "Atualizar Usuário",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"first_name\": \"Eduardo\",\n  \"last_name\": \"Eloi Updated\",\n  \"phone\": \"15999999999\",\n  \"birth_date\": \"1992-05-06\",\n  \"is_active\": true,\n  \"is_payment\": true\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/users/1",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "Deletar Usuário",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "http://localhost:3000/api/users/1",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "Trocar Senha",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"oldPassword\": \"123456\",\n  \"newPassword\": \"654321\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/users/1/change-password",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "users", "1", "change-password"]
+        }
+      }
+    }
+  ]
+}
