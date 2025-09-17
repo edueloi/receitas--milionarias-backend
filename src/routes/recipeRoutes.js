@@ -1,4 +1,3 @@
-// src/routes/recipeRoutes.js
 import express from 'express';
 import {
     createRecipe,
@@ -11,7 +10,22 @@ import {
 } from '../controllers/recipeController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
+import multer from 'multer';
+import path from 'path';
+
 const router = express.Router();
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+    },
+    filename: (req, file, cb) => {
+        const extname = path.extname(file.originalname);
+        cb(null, `${file.fieldname}-${Date.now()}${extname}`);
+    }
+});
+
+const upload = multer({ storage: storage });
 
 /**
  * @swagger
@@ -37,47 +51,24 @@ const router = express.Router();
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
- *               titulo: { type: string, example: 'Bolo de Cenoura' }
- *               resumo: { type: string, example: 'Um bolo fofinho e delicioso.' }
- *               id_categoria: { type: integer, example: 1 }
- *               dificuldade: { type: string, enum: ['Fácil', 'Médio', 'Difícil'], example: 'Fácil' }
- *               tempo_preparo_min: { type: integer, example: 60 }
- *               grupos_ingredientes:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     titulo: { type: string, example: 'Massa' }
- *                     ordem: { type: integer, example: 1 }
- *                     ingredientes:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           descricao: { type: string, example: '3 cenouras médias' }
- *                           ordem: { type: integer, example: 1 }
- *               passos_preparo:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     descricao: { type: string, example: 'Bata tudo no liquidificador.' }
- *                     ordem: { type: integer, example: 1 }
- *               tags:
- *                 type: array
- *                 items: { type: integer }
- *                 example: [1, 5]
+ *               data:
+ *                 type: string
+ *                 description: 'Objeto JSON com os dados da receita (título, resumo, etc.).'
+ *               imagem:
+ *                 type: string
+ *                 format: binary
+ *                 description: 'Arquivo de imagem principal da receita.'
  *     responses:
  *       201:
  *         description: 'Receita criada com sucesso'
  */
 router.route('/recipes')
     .get(getAllRecipes)
-    .post(authMiddleware, createRecipe);
+    .post(authMiddleware, upload.single('imagem'), createRecipe);
 
 /**
  * @swagger
@@ -89,10 +80,13 @@ router.route('/recipes')
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *     responses:
- *       200: { description: 'Dados da receita' }
- *       404: { description: 'Receita não encontrada' }
+ *       200:
+ *         description: 'Dados da receita'
+ *       404:
+ *         description: 'Receita não encontrada'
  *   put:
  *     summary: Atualiza uma receita completa pelo ID
  *     tags: [Receitas]
@@ -102,46 +96,27 @@ router.route('/recipes')
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
- *               titulo: { type: string, example: 'Novo Bolo de Cenoura' }
- *               resumo: { type: string, example: 'Atualizado para ser mais fofinho.' }
- *               id_categoria: { type: integer, example: 1 }
- *               dificuldade: { type: string, enum: ['Fácil', 'Médio', 'Difícil'], example: 'Fácil' }
- *               tempo_preparo_min: { type: integer, example: 50 }
- *               grupos_ingredientes:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     titulo: { type: string }
- *                     ordem: { type: integer }
- *                     ingredientes:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           descricao: { type: string }
- *                           ordem: { type: integer }
- *               passos_preparo:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     descricao: { type: string }
- *                     ordem: { type: integer }
- *               tags:
- *                 type: array
- *                 items: { type: integer }
+ *               data:
+ *                 type: string
+ *                 description: 'Objeto JSON com os dados da receita (título, resumo, etc.).'
+ *               imagem:
+ *                 type: string
+ *                 format: binary
+ *                 description: 'Novo arquivo de imagem principal da receita.'
  *     responses:
- *       200: { description: 'Receita atualizada com sucesso' }
- *       404: { description: 'Receita não encontrada ou sem permissão' }
+ *       200:
+ *         description: 'Receita atualizada com sucesso'
+ *       404:
+ *         description: 'Receita não encontrada ou sem permissão'
  *   delete:
  *     summary: Deleta uma receita
  *     tags: [Receitas]
@@ -151,21 +126,24 @@ router.route('/recipes')
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *     responses:
- *       204: { description: 'Receita deletada com sucesso' }
- *       404: { description: 'Receita não encontrada ou sem permissão' }
+ *       204:
+ *         description: 'Receita deletada com sucesso'
+ *       404:
+ *         description: 'Receita não encontrada ou sem permissão'
  */
 router.route('/recipes/:id')
     .get(getRecipeById)
-    .put(authMiddleware, updateRecipe)
+    .put(authMiddleware, upload.single('imagem'), updateRecipe)
     .delete(authMiddleware, deleteRecipe);
 
 /**
  * @swagger
  * /recipes/{id}/deactivate:
  *   put:
- *     summary: (Admin) Inativa uma receita pelo ID
+ *     summary: Inativa uma receita pelo ID
  *     tags: [Receitas]
  *     security:
  *       - bearerAuth: []
@@ -173,10 +151,13 @@ router.route('/recipes/:id')
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *     responses:
- *       200: { description: 'Receita inativada com sucesso' }
- *       404: { description: 'Receita não encontrada' }
+ *       200:
+ *         description: 'Receita inativada com sucesso'
+ *       404:
+ *         description: 'Receita não encontrada'
  */
 router.put('/recipes/:id/deactivate', authMiddleware, deactivateRecipe);
 
@@ -184,7 +165,7 @@ router.put('/recipes/:id/deactivate', authMiddleware, deactivateRecipe);
  * @swagger
  * /recipes/{id}/activate:
  *   put:
- *     summary: (Admin) Ativa uma receita pelo ID
+ *     summary: Ativa uma receita pelo ID
  *     tags: [Receitas]
  *     security:
  *       - bearerAuth: []
@@ -192,10 +173,13 @@ router.put('/recipes/:id/deactivate', authMiddleware, deactivateRecipe);
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *     responses:
- *       200: { description: 'Receita ativada com sucesso' }
- *       404: { description: 'Receita não encontrada' }
+ *       200:
+ *         description: 'Receita ativada com sucesso'
+ *       404:
+ *         description: 'Receita não encontrada'
  */
 router.put('/recipes/:id/activate', authMiddleware, activateRecipe);
 

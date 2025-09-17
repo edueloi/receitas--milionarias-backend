@@ -1,5 +1,7 @@
 // src/controllers/recipeController.js
 import db from '../config/db.js';
+import fs from 'fs';
+import path from 'path';
 
 // POST /api/recipes
 export const createRecipe = async (req, res) => {
@@ -7,18 +9,18 @@ export const createRecipe = async (req, res) => {
     try {
         await connection.beginTransaction();
 
+        const data = req.body.data ? JSON.parse(req.body.data) : req.body;
         const {
             titulo, resumo, id_categoria, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status,
             calorias_kcal, proteinas_g, carboidratos_g, gorduras_g,
-            grupos_ingredientes, // Array: [{ titulo, ordem, ingredientes: [{ descricao, observacao, ordem }] }]
-            passos_preparo,      // Array: [{ descricao, observacao, ordem }]
-            tags                 // Array: [id_tag1, id_tag2]
-        } = req.body;
+            grupos_ingredientes,
+            passos_preparo,
+            tags
+        } = data;
 
         const id_usuario_criador = req.user.id;
         let id_midia_principal = null;
 
-        // 1. Se houver um arquivo, insira na tabela de mídia primeiro
         if (req.file) {
             const mediaSql = 'INSERT INTO midia (id_usuario_upload, url_arquivo, tipo_arquivo) VALUES (?, ?, ?)';
             const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
@@ -26,12 +28,10 @@ export const createRecipe = async (req, res) => {
             id_midia_principal = mediaResult.insertId;
         }
 
-        // 2. Inserir a receita principal
         const recipeSql = `INSERT INTO receitas (titulo, resumo, id_categoria, id_usuario_criador, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status, calorias_kcal, proteinas_g, carboidratos_g, gorduras_g, id_midia_principal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         const [recipeResult] = await connection.query(recipeSql, [titulo, resumo, id_categoria, id_usuario_criador, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status || 'pendente', calorias_kcal, proteinas_g, carboidratos_g, gorduras_g, id_midia_principal]);
         const id_receita = recipeResult.insertId;
 
-        // 3. Inserir Grupos de Ingredientes e Ingredientes
         for (const grupo of grupos_ingredientes || []) {
             const groupSql = 'INSERT INTO grupos_ingredientes (id_receita, titulo, ordem) VALUES (?, ?, ?)';
             const [groupResult] = await connection.query(groupSql, [id_receita, grupo.titulo, grupo.ordem]);
@@ -43,13 +43,11 @@ export const createRecipe = async (req, res) => {
             }
         }
 
-        // 4. Inserir Passos de Preparo
         for (const passo of passos_preparo || []) {
             const passoSql = 'INSERT INTO passos_preparo (id_receita, descricao, observacao, ordem) VALUES (?, ?, ?, ?)';
             await connection.query(passoSql, [id_receita, passo.descricao, passo.observacao, passo.ordem]);
         }
 
-        // 5. Inserir Tags
         for (const id_tag of tags || []) {
             const tagSql = 'INSERT INTO receita_tags (id_receita, id_tag) VALUES (?, ?)';
             await connection.query(tagSql, [id_receita, id_tag]);
@@ -69,21 +67,24 @@ export const createRecipe = async (req, res) => {
 
 // GET /api/recipes/:id
 export const getRecipeById = async (req, res) => {
+    const connection = await db.getConnection();
     try {
         const { id } = req.params;
 
-        // Modificando a consulta para incluir os dados do criador usando um JOIN
-        const [recipes] = await db.query(
+        const [recipes] = await connection.query(
             `
             SELECT
                 r.*,
                 u.nome AS criador_nome,
                 u.codigo_afiliado_proprio AS criador_codigo_afiliado,
-                u.id_afiliado_indicador AS criador_id_afiliado
+                u.id_afiliado_indicador AS criador_id_afiliado,
+                m.url_arquivo AS imagem_url
             FROM
                 receitas AS r
             JOIN
                 usuarios AS u ON r.id_usuario_criador = u.id
+            LEFT JOIN
+                midia AS m ON r.id_midia_principal = m.id
             WHERE
                 r.id = ?
             `,
@@ -96,17 +97,15 @@ export const getRecipeById = async (req, res) => {
         
         const receita = recipes[0];
 
-        // Buscar o restante dos dados (grupos, passos, tags)...
-        const [grupos] = await db.query('SELECT * FROM grupos_ingredientes WHERE id_receita = ? ORDER BY ordem', [id]);
+        const [grupos] = await connection.query('SELECT * FROM grupos_ingredientes WHERE id_receita = ? ORDER BY ordem', [id]);
         for (const grupo of grupos) {
-            const [ingredientes] = await db.query('SELECT * FROM ingredientes WHERE id_grupo = ? ORDER BY ordem', [grupo.id]);
+            const [ingredientes] = await connection.query('SELECT * FROM ingredientes WHERE id_grupo = ? ORDER BY ordem', [grupo.id]);
             grupo.ingredientes = ingredientes;
         }
 
-        const [passos] = await db.query('SELECT * FROM passos_preparo WHERE id_receita = ? ORDER BY ordem', [id]);
+        const [passos] = await connection.query('SELECT * FROM passos_preparo WHERE id_receita = ? ORDER BY ordem', [id]);
         const [tags] = await db.query('SELECT t.id, t.nome FROM receita_tags rt JOIN tags t ON rt.id_tag = t.id WHERE rt.id_receita = ?', [id]);
 
-        // Criando um objeto para o criador
         const criador = {
             id: receita.id_usuario_criador,
             nome: receita.criador_nome,
@@ -114,12 +113,10 @@ export const getRecipeById = async (req, res) => {
             id_afiliado_indicador: receita.criador_id_afiliado
         };
         
-        // Removendo as colunas do criador para evitar duplicação na raiz do objeto de receita
         delete receita.criador_nome;
         delete receita.criador_codigo_afiliado;
         delete receita.criador_id_afiliado;
 
-        // Montando o objeto final da resposta
         const fullRecipe = {
             ...receita,
             criador: criador,
@@ -133,10 +130,11 @@ export const getRecipeById = async (req, res) => {
     } catch (error) {
         console.error('Erro ao buscar receita:', error);
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    } finally {
+        connection.release();
     }
 };
 
-// PUT /api/recipes/:id
 // PUT /api/recipes/:id
 export const updateRecipe = async (req, res) => {
     const connection = await db.getConnection();
@@ -144,20 +142,45 @@ export const updateRecipe = async (req, res) => {
         await connection.beginTransaction();
 
         const { id } = req.params;
+        
+        const data = req.body.data ? JSON.parse(req.body.data) : req.body;
         const {
             titulo, resumo, id_categoria, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status,
             calorias_kcal, proteinas_g, carboidratos_g, gorduras_g,
             grupos_ingredientes,
             passos_preparo,
             tags
-        } = req.body;
+        } = data;
 
         const id_usuario_criador = req.user.id;
+        
+        if (req.file) {
+            const [existingRecipe] = await connection.query('SELECT id_midia_principal FROM receitas WHERE id = ?', [id]);
+
+            if (existingRecipe.length > 0 && existingRecipe[0].id_midia_principal) {
+                const [existingMedia] = await connection.query('SELECT url_arquivo FROM midia WHERE id = ?', [existingRecipe[0].id_midia_principal]);
+                if (existingMedia.length > 0 && existingMedia[0].url_arquivo) {
+                    fs.unlink(path.join(process.cwd(), existingMedia[0].url_arquivo), (err) => {
+                        if (err) console.error('Erro ao deletar arquivo antigo:', err);
+                    });
+                }
+                const mediaUpdateSql = 'UPDATE midia SET id_usuario_upload = ?, url_arquivo = ?, tipo_arquivo = ? WHERE id = ?';
+                const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
+                await connection.query(mediaUpdateSql, [id_usuario_criador, req.file.path, tipo_arquivo, existingRecipe[0].id_midia_principal]);
+            } else {
+                const mediaInsertSql = 'INSERT INTO midia (id_usuario_upload, url_arquivo, tipo_arquivo) VALUES (?, ?, ?)';
+                const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
+                const [mediaInsertResult] = await connection.query(mediaInsertSql, [id_usuario_criador, req.file.path, tipo_arquivo]);
+                const new_id_midia_principal = mediaInsertResult.insertId;
+
+                const updateRecipeMediaSql = 'UPDATE receitas SET id_midia_principal = ? WHERE id = ? AND id_usuario_criador = ?';
+                await connection.query(updateRecipeMediaSql, [new_id_midia_principal, id, id_usuario_criador]);
+            }
+        }
 
         const fieldsToUpdate = [];
         const values = [];
 
-        // Dynamically add fields to update if they are present in the request body
         if (typeof titulo !== 'undefined') { fieldsToUpdate.push('titulo = ?'); values.push(titulo); }
         if (typeof resumo !== 'undefined') { fieldsToUpdate.push('resumo = ?'); values.push(resumo); }
         if (typeof id_categoria !== 'undefined') { fieldsToUpdate.push('id_categoria = ?'); values.push(id_categoria); }
@@ -172,26 +195,21 @@ export const updateRecipe = async (req, res) => {
         if (typeof carboidratos_g !== 'undefined') { fieldsToUpdate.push('carboidratos_g = ?'); values.push(carboidratos_g); }
         if (typeof gorduras_g !== 'undefined') { fieldsToUpdate.push('gorduras_g = ?'); values.push(gorduras_g); }
 
-        if (fieldsToUpdate.length === 0) {
-            await connection.rollback();
-            return res.status(400).json({ message: 'Nenhum dado principal fornecido para atualização.' });
+        if (fieldsToUpdate.length > 0) {
+            const recipeSql = `
+                UPDATE receitas SET
+                    ${fieldsToUpdate.join(', ')}
+                WHERE id = ? AND id_usuario_criador = ?
+            `;
+            values.push(id, id_usuario_criador);
+
+            const [recipeUpdateResult] = await connection.query(recipeSql, values);
+            if (recipeUpdateResult.affectedRows === 0) {
+                await connection.rollback();
+                return res.status(404).json({ message: 'Receita não encontrada ou você não tem permissão para editá-la.' });
+            }
         }
-
-        const recipeSql = `
-            UPDATE receitas SET
-                ${fieldsToUpdate.join(', ')}
-            WHERE id = ? AND id_usuario_criador = ?
-        `;
-        values.push(id, id_usuario_criador);
-
-        const [recipeUpdateResult] = await connection.query(recipeSql, values);
-
-        if (recipeUpdateResult.affectedRows === 0) {
-            await connection.rollback();
-            return res.status(404).json({ message: 'Receita não encontrada ou você não tem permissão para editá-la.' });
-        }
-
-        // Handle nested updates (grupos_ingredientes, passos_preparo, tags) only if they are provided
+        
         if (grupos_ingredientes !== undefined) {
             await connection.query('DELETE FROM grupos_ingredientes WHERE id_receita = ?', [id]);
             for (const grupo of grupos_ingredientes || []) {
@@ -234,9 +252,7 @@ export const updateRecipe = async (req, res) => {
     }
 };
 
-// PUT /api/recipes/:id/deactivate
 export const deactivateRecipe = async (req, res) => {
-    // Você pode adicionar um middleware de verificação de permissão de admin aqui
     const connection = await db.getConnection();
     try {
         const { id } = req.params;
@@ -255,9 +271,7 @@ export const deactivateRecipe = async (req, res) => {
     }
 };
 
-// PUT /api/recipes/:id/activate
 export const activateRecipe = async (req, res) => {
-    // Você pode adicionar um middleware de verificação de permissão de admin aqui
     const connection = await db.getConnection();
     try {
         const { id } = req.params;
@@ -284,12 +298,22 @@ export const deleteRecipe = async (req, res) => {
         const { id } = req.params;
         const id_usuario_criador = req.user.id;
 
-        // Excluir registros relacionados primeiro
+        const [existingRecipe] = await connection.query('SELECT id_midia_principal FROM receitas WHERE id = ?', [id]);
+        
+        if (existingRecipe.length > 0 && existingRecipe[0].id_midia_principal) {
+            const [existingMedia] = await connection.query('SELECT url_arquivo FROM midia WHERE id = ?', [existingRecipe[0].id_midia_principal]);
+            if (existingMedia.length > 0 && existingMedia[0].url_arquivo) {
+                fs.unlink(path.join(process.cwd(), existingMedia[0].url_arquivo), (err) => {
+                    if (err) console.error('Erro ao deletar arquivo de mídia antigo:', err);
+                });
+            }
+            await connection.query('DELETE FROM midia WHERE id = ?', [existingRecipe[0].id_midia_principal]);
+        }
+
         await connection.query('DELETE FROM grupos_ingredientes WHERE id_receita = ?', [id]);
         await connection.query('DELETE FROM passos_preparo WHERE id_receita = ?', [id]);
         await connection.query('DELETE FROM receita_tags WHERE id_receita = ?', [id]);
         
-        // Deletar a receita principal (verifica se o usuário é o criador)
         const [result] = await connection.query('DELETE FROM receitas WHERE id = ? AND id_usuario_criador = ?', [id, id_usuario_criador]);
 
         if (result.affectedRows === 0) {
@@ -298,7 +322,7 @@ export const deleteRecipe = async (req, res) => {
         }
 
         await connection.commit();
-        res.status(204).send(); // Resposta 204 indica sucesso sem conteúdo
+        res.status(204).send();
 
     } catch (error) {
         await connection.rollback();
@@ -311,8 +335,9 @@ export const deleteRecipe = async (req, res) => {
 
 // GET /api/recipes
 export const getAllRecipes = async (req, res) => {
+    const connection = await db.getConnection();
     try {
-        const [recipes] = await db.query(
+        const [recipes] = await connection.query(
             `
             SELECT
                 r.id,
@@ -333,7 +358,6 @@ export const getAllRecipes = async (req, res) => {
             `
         );
 
-        // Formatando a resposta para incluir um objeto de criador
         const formattedRecipes = recipes.map(recipe => {
             const criador = {
                 id: recipe.id_usuario_criador,
@@ -341,7 +365,6 @@ export const getAllRecipes = async (req, res) => {
                 codigo_afiliado_proprio: recipe.criador_codigo_afiliado,
             };
 
-            // Removendo as colunas do criador do objeto principal
             delete recipe.id_usuario_criador;
             delete recipe.criador_nome;
             delete recipe.criador_codigo_afiliado;
@@ -357,7 +380,7 @@ export const getAllRecipes = async (req, res) => {
     } catch (error) {
         console.error('Erro ao buscar todas as receitas:', error);
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    } finally {
+        connection.release();
     }
 };
-
-// Outras funções (updateRecipe, deleteRecipe) podem ser adicionadas aqui.
