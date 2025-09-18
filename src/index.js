@@ -13,7 +13,7 @@ import recipeRoutes from './routes/recipeRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
 import commentRoutes from './routes/commentRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
-import earningsRoutes from './routes/earningsRoutes.js'; // Importa rotas de ganhos
+import earningsRoutes from './routes/earningsRoutes.js';
 import userPreferenceRoutes from './routes/userPreferenceRoutes.js';
 
 const app = express();
@@ -22,6 +22,10 @@ const PORT = process.env.PORT || 3000;
 // --- Middlewares ---
 app.use(cors());
 app.use(express.json());
+
+// --- Configuração para servir arquivos estáticos ---
+// Isso permite que o frontend acesse as imagens na pasta 'uploads'
+app.use('/uploads', express.static('uploads'));
 
 // --- Rotas da API ---
 app.use('/api', userRoutes);
@@ -32,7 +36,7 @@ app.use('/api', recipeRoutes);
 app.use('/api', mediaRoutes);
 app.use('/api', commentRoutes);
 app.use('/api', analyticsRoutes);
-app.use('/api', earningsRoutes); // Registra rotas de ganhos
+app.use('/api', earningsRoutes);
 app.use('/api', userPreferenceRoutes);
 
 // --- Rota da Documentação ---
@@ -45,6 +49,6 @@ app.get('/', (req, res) => {
 
 // --- Inicia o Servidor ---
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`Documentação da API disponível em http://localhost:${PORT}/api-docs`);
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📖 Documentação da API disponível em http://0.0.0.0:${PORT}/api-docs`);
 });

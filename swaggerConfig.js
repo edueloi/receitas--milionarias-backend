@@ -10,6 +10,10 @@ const options = {
     },
     servers: [
       {
+        url: `https://receitasmilionarias.com.br/api`,
+        description: 'Servidor de Produção',
+      },
+      {
         url: `http://localhost:${process.env.PORT || 3000}/api`,
         description: 'Servidor de Desenvolvimento',
       },

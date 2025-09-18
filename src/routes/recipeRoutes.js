@@ -43,6 +43,41 @@ const upload = multer({ storage: storage });
  *     responses:
  *       200:
  *         description: 'Lista de receitas'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Recipe'
+ *             examples:
+ *               RecipeList:
+ *                 value:
+ *                   - _id: "654321098765432109876543"
+ *                     title: "Bolo de Chocolate"
+ *                     description: "Um delicioso bolo de chocolate com cobertura de brigadeiro."
+ *                     ingredients: ["farinha", "açúcar", "chocolate em pó", "ovos", "leite"]
+ *                     instructions: ["Misture os ingredientes secos...", "Adicione os líquidos...", "Asse por 40 minutos..."]
+ *                     category: "Sobremesas"
+ *                     user: "654321098765432109876542"
+ *                     images: ["http://localhost:3000/uploads/bolo-chocolate.jpg"]
+ *                     rating: 4.8
+ *                     numReviews: 120
+ *                     isPublished: true
+ *                     createdAt: "2023-10-26T10:00:00.000Z"
+ *                     updatedAt: "2023-10-26T10:00:00.000Z"
+ *                   - _id: "654321098765432109876544"
+ *                     title: "Salada Caesar"
+ *                     description: "Uma clássica salada Caesar com frango grelhado."
+ *                     ingredients: ["alface", "frango", "molho caesar", "croutons", "parmesão"]
+ *                     instructions: ["Grelhe o frango...", "Lave a alface...", "Misture tudo..."]
+ *                     category: "Saladas"
+ *                     user: "654321098765432109876542"
+ *                     images: ["http://localhost:3000/uploads/salada-caesar.jpg"]
+ *                     rating: 4.5
+ *                     numReviews: 80
+ *                     isPublished: true
+ *                     createdAt: "2023-10-25T10:00:00.000Z"
+ *                     updatedAt: "2023-10-25T10:00:00.000Z"
  *   post:
  *     summary: Cria uma nova receita completa
  *     tags: [Receitas]
@@ -58,6 +93,7 @@ const upload = multer({ storage: storage });
  *               data:
  *                 type: string
  *                 description: 'Objeto JSON com os dados da receita (título, resumo, etc.).'
+ *                 example: '{"title": "Pizza Margherita", "description": "A clássica pizza italiana.", "ingredients": ["massa", "molho de tomate", "muçarela", "manjericão"], "instructions": ["Prepare a massa...", "Adicione os ingredientes...", "Asse no forno..."], "category": "Pizzas"}'
  *               imagem:
  *                 type: string
  *                 format: binary
@@ -65,6 +101,26 @@ const upload = multer({ storage: storage });
  *     responses:
  *       201:
  *         description: 'Receita criada com sucesso'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
+ *             examples:
+ *               RecipeCreated:
+ *                 value:
+ *                   _id: "654321098765432109876545"
+ *                   title: "Pizza Margherita"
+ *                   description: "A clássica pizza italiana."
+ *                   ingredients: ["massa", "molho de tomate", "muçarela", "manjericão"]
+ *                   instructions: ["Prepare a massa...", "Adicione os ingredientes...", "Asse no forno..."]
+ *                   category: "Pizzas"
+ *                   user: "654321098765432109876542"
+ *                   images: ["http://localhost:3000/uploads/pizza-margherita.jpg"]
+ *                   rating: 0
+ *                   numReviews: 0
+ *                   isPublished: true
+ *                   createdAt: "2023-10-27T10:00:00.000Z"
+ *                   updatedAt: "2023-10-27T10:00:00.000Z"
  */
 router.route('/recipes')
     .get(getAllRecipes)
@@ -85,6 +141,26 @@ router.route('/recipes')
  *     responses:
  *       200:
  *         description: 'Dados da receita'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
+ *             examples:
+ *               SingleRecipe:
+ *                 value:
+ *                   _id: "654321098765432109876543"
+ *                   title: "Bolo de Chocolate"
+ *                   description: "Um delicioso bolo de chocolate com cobertura de brigadeiro."
+ *                   ingredients: ["farinha", "açúcar", "chocolate em pó", "ovos", "leite"]
+ *                   instructions: ["Misture os ingredientes secos...", "Adicione os líquidos...", "Asse por 40 minutos..."]
+ *                   category: "Sobremesas"
+ *                   user: "654321098765432109876542"
+ *                   images: ["http://localhost:3000/uploads/bolo-chocolate.jpg"]
+ *                   rating: 4.8
+ *                   numReviews: 120
+ *                   isPublished: true
+ *                   createdAt: "2023-10-26T10:00:00.000Z"
+ *                   updatedAt: "2023-10-26T10:00:00.000Z"
  *       404:
  *         description: 'Receita não encontrada'
  *   put:
@@ -108,6 +184,7 @@ router.route('/recipes')
  *               data:
  *                 type: string
  *                 description: 'Objeto JSON com os dados da receita (título, resumo, etc.).'
+ *                 example: '{"title": "Bolo de Chocolate Atualizado", "description": "Um delicioso bolo de chocolate com nova cobertura.", "ingredients": ["farinha", "açúcar", "chocolate em pó", "ovos", "leite", "nova cobertura"], "instructions": ["Misture os ingredientes secos...", "Adicione os líquidos...", "Asse por 45 minutos..."], "category": "Sobremesas"}'
  *               imagem:
  *                 type: string
  *                 format: binary
@@ -115,6 +192,26 @@ router.route('/recipes')
  *     responses:
  *       200:
  *         description: 'Receita atualizada com sucesso'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
+ *             examples:
+ *               RecipeUpdated:
+ *                 value:
+ *                   _id: "654321098765432109876543"
+ *                   title: "Bolo de Chocolate Atualizado"
+ *                   description: "Um delicioso bolo de chocolate com nova cobertura."
+ *                   ingredients: ["farinha", "açúcar", "chocolate em pó", "ovos", "leite", "nova cobertura"]
+ *                   instructions: ["Misture os ingredientes secos...", "Adicione os líquidos...", "Asse por 45 minutos..."]
+ *                   category: "Sobremesas"
+ *                   user: "654321098765432109876542"
+ *                   images: ["http://localhost:3000/uploads/bolo-chocolate-novo.jpg"]
+ *                   rating: 4.8
+ *                   numReviews: 120
+ *                   isPublished: true
+ *                   createdAt: "2023-10-26T10:00:00.000Z"
+ *                   updatedAt: "2023-10-27T11:00:00.000Z"
  *       404:
  *         description: 'Receita não encontrada ou sem permissão'
  *   delete:
@@ -156,6 +253,26 @@ router.route('/recipes/:id')
  *     responses:
  *       200:
  *         description: 'Receita inativada com sucesso'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
+ *             examples:
+ *               RecipeDeactivated:
+ *                 value:
+ *                   _id: "654321098765432109876543"
+ *                   title: "Bolo de Chocolate"
+ *                   description: "Um delicioso bolo de chocolate com cobertura de brigadeiro."
+ *                   ingredients: ["farinha", "açúcar", "chocolate em pó", "ovos", "leite"]
+ *                   instructions: ["Misture os ingredientes secos...", "Adicione os líquidos...", "Asse por 40 minutos..."]
+ *                   category: "Sobremesas"
+ *                   user: "654321098765432109876542"
+ *                   images: ["http://localhost:3000/uploads/bolo-chocolate.jpg"]
+ *                   rating: 4.8
+ *                   numReviews: 120
+ *                   isPublished: false
+ *                   createdAt: "2023-10-26T10:00:00.000Z"
+ *                   updatedAt: "2023-10-27T12:00:00.000Z"
  *       404:
  *         description: 'Receita não encontrada'
  */
@@ -178,6 +295,26 @@ router.put('/recipes/:id/deactivate', authMiddleware, deactivateRecipe);
  *     responses:
  *       200:
  *         description: 'Receita ativada com sucesso'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
+ *             examples:
+ *               RecipeActivated:
+ *                 value:
+ *                   _id: "654321098765432109876543"
+ *                   title: "Bolo de Chocolate"
+ *                   description: "Um delicioso bolo de chocolate com cobertura de brigadeiro."
+ *                   ingredients: ["farinha", "açúcar", "chocolate em pó", "ovos", "leite"]
+ *                   instructions: ["Misture os ingredientes secos...", "Adicione os líquidos...", "Asse por 40 minutos..."]
+ *                   category: "Sobremesas"
+ *                   user: "654321098765432109876542"
+ *                   images: ["http://localhost:3000/uploads/bolo-chocolate.jpg"]
+ *                   rating: 4.8
+ *                   numReviews: 120
+ *                   isPublished: true
+ *                   createdAt: "2023-10-26T10:00:00.000Z"
+ *                   updatedAt: "2023-10-27T13:00:00.000Z"
  *       404:
  *         description: 'Receita não encontrada'
  */
