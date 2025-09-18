@@ -50,6 +50,6 @@ app.get('/', (req, res) => {
 // --- Inicia o Servidor ---
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📖 LocalHost da API disponível em http://localhost/:${PORT}/api-docs`);
+    console.log(`📖 LocalHost da API disponível em http://localhost:${PORT}/api-docs`);
     console.log(`📖 Documentação da API disponível em http://0.0.0.0:${PORT}/api-docs`);
 });
