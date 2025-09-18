@@ -9,11 +9,12 @@ const isAdmin = (req, res, next) => {
 
 // POST /api/tags
 export const createTag = [isAdmin, async (req, res) => {
-    const { nome } = req.body;
-    if (!nome) {
-        return res.status(400).json({ message: 'O nome da tag é obrigatório.' });
-    }
     try {
+        const { nome } = req.body.data ? JSON.parse(req.body.data) : req.body;
+        if (!nome) {
+            return res.status(400).json({ message: 'O nome da tag é obrigatório.' });
+        }
+
         const [result] = await db.query('INSERT INTO tags (nome) VALUES (?)', [nome]);
         res.status(201).json({ id: result.insertId, nome });
     } catch (error) {

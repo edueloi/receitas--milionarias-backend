@@ -6,6 +6,7 @@ import {
     deleteTag
 } from '../controllers/tagController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import upload from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ const router = express.Router();
  *       200: { description: 'Lista de tags' }
  */
 router.route('/tags')
-    .post(authMiddleware, createTag)
+    .post(authMiddleware, upload.none(), createTag)
     .get(getAllTags);
 
 /**

@@ -7,6 +7,7 @@ import {
     deleteCategory
 } from '../controllers/categoryController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import upload from '../middleware/uploadMiddleware.js'; // Importa o middleware de upload
 
 const router = express.Router();
 
@@ -27,12 +28,12 @@ const router = express.Router();
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data: // Alterado para multipart/form-data
  *           schema:
  *             type: object
  *             properties:
- *               nome: { type: string, example: 'Sobremesas' }
- *               descricao: { type: string, example: 'Doces, bolos e tortas.' }
+ *               data: { type: string, example: '{"nome":"Sobremesas","descricao":"Doces, bolos e tortas."}' } // Campo de dados JSON
+ *               imagem: { type: string, format: 'binary' } // Campo do arquivo
  *     responses:
  *       201: { description: 'Categoria criada' }
  *   get:
@@ -42,7 +43,7 @@ const router = express.Router();
  *       200: { description: 'Lista de categorias' }
  */
 router.route('/categories')
-    .post(authMiddleware, createCategory)
+    .post(authMiddleware, upload.single('imagem'), createCategory) // Adiciona o middleware de upload
     .get(getAllCategories);
 
 /**
@@ -57,12 +58,12 @@ router.route('/categories')
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data: // Alterado para multipart/form-data
  *           schema:
  *             type: object
  *             properties:
- *               nome: { type: string }
- *               descricao: { type: string }
+ *               data: { type: string, example: '{"nome":"Sobremesas","descricao":"Doces, bolos e tortas."}' } // Campo de dados JSON
+ *               imagem: { type: string, format: 'binary' } // Campo do arquivo
  *     responses:
  *       200: { description: 'Categoria atualizada' }
  *   delete:
@@ -75,7 +76,7 @@ router.route('/categories')
  *       204: { description: 'Categoria deletada' }
  */
 router.route('/categories/:id')
-    .put(authMiddleware, updateCategory)
+    .put(authMiddleware, upload.single('imagem'), updateCategory) // Adiciona o middleware de upload
     .delete(authMiddleware, deleteCategory);
 
 export default router;
