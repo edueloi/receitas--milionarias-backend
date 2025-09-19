@@ -3,6 +3,8 @@ import db from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
 
 // --- CADASTRO ---
 export const registerUser = async (req, res) => {
@@ -148,6 +150,7 @@ export const getUserProfile = async (req, res) => {
                 u.id, u.nome, u.sobrenome, u.email, u.telefone, 
                 u.endereco, u.numero_endereco, u.complemento, u.bairro, 
                 u.cep, u.cidade, u.estado, u.biografia, u.profissao, u.escolaridade,
+                u.foto_perfil_url,
                 u.codigo_afiliado_proprio,
                 p.id AS id_permissao,
                 p.nome AS permissao,
@@ -164,7 +167,14 @@ export const getUserProfile = async (req, res) => {
             return res.status(404).json({ message: 'Usuário não encontrado.' });
         }
 
-        res.json(users[0]);
+        const user = users[0];
+
+        // Formata a URL da foto de perfil, se existir
+        if (user.foto_perfil_url) {
+            user.foto_perfil_url = String(user.foto_perfil_url).replace(/\\/g, '/');
+        }
+
+        res.json(user);
     } catch (error) {
         console.error('Erro ao buscar perfil:', error);
         res.status(500).json({ message: 'Erro interno no servidor.' });
@@ -174,43 +184,59 @@ export const getUserProfile = async (req, res) => {
 // PUT /api/users/me (Atualiza o perfil do próprio usuário logado)
 export const updateUserProfile = async (req, res) => {
     const userId = req.user.id;
-    const {
-        nome, sobrenome, data_nascimento, telefone,
-        endereco, numero_endereco, complemento, bairro, cep, cidade, estado,
-        biografia, descricao, observacao, profissao, escolaridade
-    } = req.body;
-
-    const fieldsToUpdate = [];
-    const values = [];
-
-    if (nome) { fieldsToUpdate.push('nome = ?'); values.push(nome); }
-    if (sobrenome) { fieldsToUpdate.push('sobrenome = ?'); values.push(sobrenome); }
-    if (data_nascimento) { fieldsToUpdate.push('data_nascimento = ?'); values.push(data_nascimento); }
-    if (telefone) { fieldsToUpdate.push('telefone = ?'); values.push(telefone); }
-    if (endereco) { fieldsToUpdate.push('endereco = ?'); values.push(endereco); }
-    if (numero_endereco) { fieldsToUpdate.push('numero_endereco = ?'); values.push(numero_endereco); }
-    if (complemento) { fieldsToUpdate.push('complemento = ?'); values.push(complemento); }
-    if (bairro) { fieldsToUpdate.push('bairro = ?'); values.push(bairro); }
-    if (cep) { fieldsToUpdate.push('cep = ?'); values.push(cep); }
-    if (cidade) { fieldsToUpdate.push('cidade = ?'); values.push(cidade); }
-    if (estado) { fieldsToUpdate.push('estado = ?'); values.push(estado); }
-    if (biografia) { fieldsToUpdate.push('biografia = ?'); values.push(biografia); }
-    if (descricao) { fieldsToUpdate.push('descricao = ?'); values.push(descricao); }
-    if (observacao) { fieldsToUpdate.push('observacao = ?'); values.push(observacao); }
-    if (profissao) { fieldsToUpdate.push('profissao = ?'); values.push(profissao); }
-    if (escolaridade) { fieldsToUpdate.push('escolaridade = ?'); values.push(escolaridade); }
-
-    if (fieldsToUpdate.length === 0) {
-        return res.status(400).json({ message: 'Nenhum dado fornecido para atualização.' });
-    }
-
-    values.push(userId);
-
-    const sql = `UPDATE usuarios SET ${fieldsToUpdate.join(', ')} WHERE id = ?`;
+    // Campos permitidos para atualização via req.body
+    const allowedFields = [
+        'nome', 'sobrenome', 'data_nascimento', 'telefone', 'rg',
+        'endereco', 'numero_endereco', 'complemento', 'bairro', 'cep', 'cidade', 'estado',
+        'biografia', 'profissao', 'escolaridade', 'nome_exibicao', 'sexo', 'estado_civil',
+        'estado_origem', 'pais_origem', 'preferencias'
+    ];
 
     try {
+        const fieldsToUpdate = [];
+        const values = [];
+
+        // Lógica para lidar com upload de foto de perfil
+        if (req.file) {
+            // 1. Buscar a URL da foto antiga para poder deletá-la
+            const [currentUser] = await db.query('SELECT foto_perfil_url FROM usuarios WHERE id = ?', [userId]);
+            const oldPhotoUrl = currentUser[0]?.foto_perfil_url;
+
+            // 2. Se existia uma foto antiga, deletar o arquivo do servidor
+            if (oldPhotoUrl) {
+                const oldPhotoPath = path.join(process.cwd(), oldPhotoUrl);
+                fs.unlink(oldPhotoPath, (err) => {
+                    if (err) {
+                        console.error('Erro ao deletar foto de perfil antiga:', err);
+                    }
+                });
+            }
+
+            // 3. Adicionar a nova URL da foto para atualização no banco
+            fieldsToUpdate.push('foto_perfil_url = ?');
+            values.push(req.file.path);
+        }
+
+        // Monta a query dinamicamente apenas com campos permitidos
+        for (const field of allowedFields) {
+            if (req.body[field] !== undefined) {
+                fieldsToUpdate.push(`${field} = ?`);
+                values.push(req.body[field]);
+            }
+        }
+
+        // Se não houver campos para atualizar (nem texto, nem arquivo), retorna um erro.
+        if (fieldsToUpdate.length === 0) {
+            return res.status(400).json({ message: 'Nenhum dado fornecido para atualização.' });
+        }
+
+        values.push(userId);
+
+        const sql = `UPDATE usuarios SET ${fieldsToUpdate.join(', ')} WHERE id = ?`;
+
         await db.query(sql, values);
         res.json({ message: 'Perfil atualizado com sucesso!' });
+
     } catch (error) {
         console.error('Erro ao atualizar perfil:', error);
         res.status(500).json({ message: 'Erro interno no servidor.' });

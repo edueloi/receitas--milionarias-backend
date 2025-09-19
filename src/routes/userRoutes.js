@@ -14,6 +14,7 @@ import {
     updateUser
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
 import { getAllUsers } from "../controllers/userController.js";
 
 const router = express.Router();
@@ -131,7 +132,7 @@ router.post('/users/forgot-password', forgotPassword);
  *             properties:
  *               token: { type: string }
  *               novaSenha: { type: string, format: password }
- *     responses:
+ *     responses: 
  *       200:
  *         description: Senha redefinida com sucesso
  *       400:
@@ -154,19 +155,21 @@ router.post('/users/reset-password', resetPassword);
  *         description: Não autorizado
  *   put:
  *     summary: Atualiza o perfil do usuário logado
+ *     description: Para upload de foto, use multipart/form-data. Os campos de texto devem ser enviados normalmente.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
  *               nome: { type: string }
  *               sobrenome: { type: string }
  *               telefone: { type: string }
+ *               foto_perfil: { type: string, format: binary, description: 'Arquivo de imagem para a foto de perfil.' }
  *               # Adicione outros campos atualizáveis aqui
  *     responses:
  *       200:
@@ -175,7 +178,7 @@ router.post('/users/reset-password', resetPassword);
  *         description: Não autorizado
  */
 router.get('/users/me', authMiddleware, getUserProfile);
-router.put('/users/me', authMiddleware, updateUserProfile);
+router.put('/users/me', authMiddleware, upload.single('foto_perfil'), updateUserProfile);
 
 /**
  * @swagger

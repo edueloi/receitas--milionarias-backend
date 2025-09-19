@@ -1,4 +1,3 @@
-// src/controllers/recipeController.js
 import db from '../config/db.js';
 import fs from 'fs';
 import path from 'path';
@@ -78,13 +77,18 @@ export const getRecipeById = async (req, res) => {
                 u.nome AS criador_nome,
                 u.codigo_afiliado_proprio AS criador_codigo_afiliado,
                 u.id_afiliado_indicador AS criador_id_afiliado,
-                m.url_arquivo AS imagem_url
+                m.url_arquivo AS imagem_url,
+                c.id AS categoria_id,
+                c.nome AS categoria_nome,
+                c.imagem_url AS categoria_imagem_url
             FROM
                 receitas AS r
             JOIN
                 usuarios AS u ON r.id_usuario_criador = u.id
             LEFT JOIN
                 midia AS m ON r.id_midia_principal = m.id
+            LEFT JOIN
+                categorias_receitas AS c ON r.id_categoria = c.id
             WHERE
                 r.id = ?
             `,
@@ -112,14 +116,25 @@ export const getRecipeById = async (req, res) => {
             codigo_afiliado_proprio: receita.criador_codigo_afiliado,
             id_afiliado_indicador: receita.criador_id_afiliado
         };
+
+        const categoria = receita.categoria_id ? {
+            id: receita.categoria_id,
+            nome: receita.categoria_nome,
+            imagem_url: receita.categoria_imagem_url ? String(receita.categoria_imagem_url).replace(/\\/g, '/') : null
+        } : null;
         
         delete receita.criador_nome;
         delete receita.criador_codigo_afiliado;
         delete receita.criador_id_afiliado;
+        delete receita.categoria_id;
+        delete receita.categoria_nome;
+        delete receita.categoria_imagem_url;
 
         const fullRecipe = {
             ...receita,
+            imagem_url: receita.imagem_url ? String(receita.imagem_url).replace(/\\/g, '/') : null,
             criador: criador,
+            categoria: categoria,
             grupos_ingredientes: grupos,
             passos_preparo: passos,
             tags: tags
@@ -340,40 +355,56 @@ export const getAllRecipes = async (req, res) => {
         const [recipes] = await connection.query(
             `
             SELECT
-                r.id,
-                r.titulo,
-                r.resumo,
-                r.dificuldade,
-                r.tempo_preparo_min,
-                r.id_usuario_criador,
+                r.*,
                 u.nome AS criador_nome,
                 u.codigo_afiliado_proprio AS criador_codigo_afiliado,
-                (SELECT url_arquivo FROM midia WHERE id = r.id_midia_principal) AS imagem_url
+                m.url_arquivo AS imagem_url,
+                c.id AS categoria_id,
+                c.nome AS categoria_nome,
+                c.imagem_url AS categoria_imagem_url
             FROM
                 receitas AS r
             JOIN
                 usuarios AS u ON r.id_usuario_criador = u.id
+            LEFT JOIN
+                midia AS m ON r.id_midia_principal = m.id
+            LEFT JOIN
+                categorias_receitas AS c ON r.id_categoria = c.id
             ORDER BY
                 r.id DESC
             `
         );
 
-        const formattedRecipes = recipes.map(recipe => {
+        const formattedRecipes = await Promise.all(recipes.map(async (recipe) => {
+            const [tags] = await connection.query('SELECT t.id, t.nome FROM receita_tags rt JOIN tags t ON rt.id_tag = t.id WHERE rt.id_receita = ?', [recipe.id]);
+
             const criador = {
                 id: recipe.id_usuario_criador,
                 nome: recipe.criador_nome,
                 codigo_afiliado_proprio: recipe.criador_codigo_afiliado,
             };
 
+            const categoria = recipe.categoria_id ? {
+                id: recipe.categoria_id,
+                nome: recipe.categoria_nome,
+                imagem_url: recipe.categoria_imagem_url ? String(recipe.categoria_imagem_url).replace(/\\/g, '/') : null
+            } : null;
+
             delete recipe.id_usuario_criador;
             delete recipe.criador_nome;
             delete recipe.criador_codigo_afiliado;
+            delete recipe.categoria_id;
+            delete recipe.categoria_nome;
+            delete recipe.categoria_imagem_url;
 
             return {
                 ...recipe,
-                criador: criador
+                imagem_url: recipe.imagem_url ? String(recipe.imagem_url).replace(/\\/g, '/') : null,
+                criador: criador,
+                categoria: categoria,
+                tags: tags
             };
-        });
+        }));
 
         res.json(formattedRecipes);
 
