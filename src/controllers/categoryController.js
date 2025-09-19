@@ -101,6 +101,12 @@ export const deleteCategory = [isAdmin, async (req, res) => {
         }
         res.status(204).send(); // No content
     } catch (error) {
+        // Check for foreign key constraint violation error
+        if (error.code === 'ER_ROW_IS_REFERENCED_2') { 
+            return res.status(409).json({
+                message: 'Não é possível deletar esta categoria porque existem receitas associadas a ela. Por favor, remova ou reassocie as receitas antes de tentar novamente.'
+            });
+        }
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
     }
 }];

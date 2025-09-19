@@ -28,12 +28,18 @@ const router = express.Router();
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data: // Alterado para multipart/form-data
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
- *               data: { type: string, example: '{"nome":"Sobremesas","descricao":"Doces, bolos e tortas."}' } // Campo de dados JSON
- *               imagem: { type: string, format: 'binary' } // Campo do arquivo
+ *               data:
+ *                 type: string
+ *                 description: JSON string com os detalhes da categoria (nome, descricao).
+ *                 example: '{"nome":"Sobremesas","descricao":"Doces, bolos e tortas."}'
+ *               imagem:
+ *                 type: string
+ *                 format: binary
+ *                 description: Arquivo de imagem para a categoria.
  *     responses:
  *       201: { description: 'Categoria criada' }
  *   get:
@@ -58,12 +64,18 @@ router.route('/categories')
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data: // Alterado para multipart/form-data
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
- *               data: { type: string, example: '{"nome":"Sobremesas","descricao":"Doces, bolos e tortas."}' } // Campo de dados JSON
- *               imagem: { type: string, format: 'binary' } // Campo do arquivo
+ *               data:
+ *                 type: string
+ *                 description: JSON string com os detalhes da categoria (nome, descricao).
+ *                 example: '{"nome":"Sobremesas","descricao":"Doces, bolos e tortas."}'
+ *               imagem:
+ *                 type: string
+ *                 format: binary
+ *                 description: Arquivo de imagem para a categoria (opcional, se for atualizar).
  *     responses:
  *       200: { description: 'Categoria atualizada' }
  *   delete:
