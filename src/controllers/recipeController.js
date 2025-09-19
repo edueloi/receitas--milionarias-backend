@@ -77,6 +77,7 @@ export const getRecipeById = async (req, res) => {
                 u.nome AS criador_nome,
                 u.codigo_afiliado_proprio AS criador_codigo_afiliado,
                 u.id_afiliado_indicador AS criador_id_afiliado,
+                u.foto_perfil_url AS criador_foto_url,
                 m.url_arquivo AS imagem_url,
                 c.id AS categoria_id,
                 c.nome AS categoria_nome,
@@ -114,7 +115,8 @@ export const getRecipeById = async (req, res) => {
             id: receita.id_usuario_criador,
             nome: receita.criador_nome,
             codigo_afiliado_proprio: receita.criador_codigo_afiliado,
-            id_afiliado_indicador: receita.criador_id_afiliado
+            id_afiliado_indicador: receita.criador_id_afiliado,
+            foto_perfil_url: receita.criador_foto_url ? String(receita.criador_foto_url).replace(/\\/g, '/') : null
         };
 
         const categoria = receita.categoria_id ? {
@@ -126,6 +128,7 @@ export const getRecipeById = async (req, res) => {
         delete receita.criador_nome;
         delete receita.criador_codigo_afiliado;
         delete receita.criador_id_afiliado;
+        delete receita.criador_foto_url;
         delete receita.categoria_id;
         delete receita.categoria_nome;
         delete receita.categoria_imagem_url;
@@ -358,6 +361,7 @@ export const getAllRecipes = async (req, res) => {
                 r.*,
                 u.nome AS criador_nome,
                 u.codigo_afiliado_proprio AS criador_codigo_afiliado,
+                u.foto_perfil_url AS criador_foto_url,
                 m.url_arquivo AS imagem_url,
                 c.id AS categoria_id,
                 c.nome AS categoria_nome,
@@ -382,6 +386,7 @@ export const getAllRecipes = async (req, res) => {
                 id: recipe.id_usuario_criador,
                 nome: recipe.criador_nome,
                 codigo_afiliado_proprio: recipe.criador_codigo_afiliado,
+                foto_perfil_url: recipe.criador_foto_url ? String(recipe.criador_foto_url).replace(/\\/g, '/') : null,
             };
 
             const categoria = recipe.categoria_id ? {
@@ -393,6 +398,7 @@ export const getAllRecipes = async (req, res) => {
             delete recipe.id_usuario_criador;
             delete recipe.criador_nome;
             delete recipe.criador_codigo_afiliado;
+            delete recipe.criador_foto_url;
             delete recipe.categoria_id;
             delete recipe.categoria_nome;
             delete recipe.categoria_imagem_url;
