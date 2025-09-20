@@ -28,6 +28,7 @@ const PORT = process.env.PORT || 3000;
 // --- Configuração de CORS ---
 const allowedOrigins = [
     'https://dashboard.receitasmilionarias.com.br',
+    'https://receitasmilionarias.com.br',
     'http://localhost:3000', // Para testes locais
     'http://localhost:3001', // Porta comum para frontend dev
     'http://localhost:5173'  // Porta comum para Vite/React dev
@@ -54,16 +55,16 @@ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 // --- Rotas da API ---
-app.use(userRoutes);
-app.use(courseRoutes);
-app.use(categoryRoutes);
-app.use(tagRoutes);
-app.use(recipeRoutes);
-app.use(mediaRoutes);
-app.use(commentRoutes);
-app.use(analyticsRoutes);
-app.use(earningsRoutes);
-app.use(userPreferenceRoutes);
+app.use('/api', userRoutes);
+app.use('/api', courseRoutes);
+app.use('/api', categoryRoutes);
+app.use('/api', tagRoutes);
+app.use('/api', recipeRoutes);
+app.use('/api', mediaRoutes);
+app.use('/api', commentRoutes);
+app.use('/api', analyticsRoutes);
+app.use('/api', earningsRoutes);
+app.use('/api', userPreferenceRoutes);
 
 // --- Rota da Documentação ---
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
