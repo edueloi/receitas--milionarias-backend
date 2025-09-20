@@ -2,6 +2,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from '../swaggerConfig.js';
 
@@ -16,6 +18,10 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 import earningsRoutes from './routes/earningsRoutes.js';
 import userPreferenceRoutes from './routes/userPreferenceRoutes.js';
 
+// Define __dirname para Módulos ES
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -24,7 +30,6 @@ app.use(cors());
 app.use(express.json());
 
 // --- Configuração para servir arquivos estáticos ---
-// Isso permite que o frontend acesse as imagens na pasta 'uploads'
 app.use('/uploads', express.static('uploads'));
 
 // --- Rotas da API ---
@@ -44,12 +49,11 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // --- Rota Raiz ---
 app.get('/', (req, res) => {
-    res.send('API Receitas-Backend está no ar! Visite /api-docs para ver a documentação.');
+    res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
 
 // --- Inicia o Servidor ---
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📖 LocalHost da API disponível em http://localhost:${PORT}/api-docs`);
-    console.log(`📖 Documentação da API disponível em http://0.0.0.0:${PORT}/api-docs`);
+    console.log(`📖 Documentação da API disponível em http://localhost:${PORT}/api-docs`);
 });
