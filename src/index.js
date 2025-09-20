@@ -54,16 +54,16 @@ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 // --- Rotas da API ---
-app.use('/api', userRoutes);
-app.use('/api', courseRoutes);
-app.use('/api', categoryRoutes);
-app.use('/api', tagRoutes);
-app.use('/api', recipeRoutes);
-app.use('/api', mediaRoutes);
-app.use('/api', commentRoutes);
-app.use('/api', analyticsRoutes);
-app.use('/api', earningsRoutes);
-app.use('/api', userPreferenceRoutes);
+app.use(userRoutes);
+app.use(courseRoutes);
+app.use(categoryRoutes);
+app.use(tagRoutes);
+app.use(recipeRoutes);
+app.use(mediaRoutes);
+app.use(commentRoutes);
+app.use(analyticsRoutes);
+app.use(earningsRoutes);
+app.use(userPreferenceRoutes);
 
 // --- Rota da Documentação ---
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
