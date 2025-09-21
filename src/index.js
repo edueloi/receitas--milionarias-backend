@@ -26,31 +26,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- Configuração de CORS ---
-const allowedOrigins = [
-    'https://dashboard.receitasmilionarias.com.br',
-    'https://receitasmilionarias.com.br',
-    'http://localhost:3000', // Para testes locais
-    'http://localhost:3001', // Porta comum para frontend dev
-    'http://localhost:5173'  // Porta comum para Vite/React dev
-];
-
-const corsOptions = {
-    origin: (origin, callback) => {
-        // Permite requisições sem 'origin' (ex: Postman, mobile apps) ou da mesma origem
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Acesso não permitido pela política de CORS.'));
-        }
-    },
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true
-};
+// Nginx ou outro proxy reverso deve gerenciar os cabeçalhos CORS.
+// O backend aceita requisições de qualquer origem para simplificar.
+app.use(cors());
 
 // --- Middlewares ---
-app.use(cors(corsOptions));
 app.use(express.json());
-
 // --- Configuração para servir arquivos estáticos ---
 app.use('/uploads', express.static('uploads'));
 
