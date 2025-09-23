@@ -50,6 +50,7 @@ const router = express.Router();
  *               senha: { type: string, format: password, example: 'senha123' }
  *               cpf: { type: string, example: '123.456.789-00' }
  *               telefone: { type: string, example: '11999998888' }
+               id_permissao: { type: integer, example: 6, description: 'ID da permissão do usuário (1 para Admin, 6 para Afiliado - padrão).' }
  *     responses:
  *       201:
  *         description: Usuário registrado com sucesso

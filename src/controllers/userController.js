@@ -43,7 +43,7 @@ export const registerUser = async (req, res) => {
         // Gera um código de afiliado único
         const codigo_afiliado_proprio = `afiliado_${new Date().getTime()}`;
 
-        const id_permissao_padrao = 6; // 'afiliado'
+        const id_permissao = req.body.id_permissao || 6; // Padrão para 'afiliado' se não for fornecido
         const id_status_padrao = 1;    // 'Ativo'
 
         // Define as datas de expiração
@@ -61,7 +61,7 @@ export const registerUser = async (req, res) => {
         const values = [
             nome, sobrenome, email, senha_hash, cpf, rg, data_nascimento, telefone,
             endereco, numero_endereco, complemento, bairro, cep, cidade, estado,
-            codigo_afiliado_proprio, id_afiliado_indicador || null, id_permissao_padrao, id_status_padrao,
+            codigo_afiliado_proprio, id_afiliado_indicador || null, id_permissao, id_status_padrao,
             data_expiracao_assinatura, null
         ];
 
