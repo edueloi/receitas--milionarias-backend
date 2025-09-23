@@ -18,6 +18,7 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 import earningsRoutes from './routes/earningsRoutes.js';
 import userPreferenceRoutes from './routes/userPreferenceRoutes.js';
 import healthRoutes from "./routes/healthRoutes.js";
+import pdfRoutes from './routes/pdfRoutes.js'; // Importar as novas rotas de PDF
 
 // Define __dirname para Módulos ES
 const __filename = fileURLToPath(import.meta.url);
@@ -48,6 +49,7 @@ app.use(analyticsRoutes);
 app.use(earningsRoutes);
 app.use(userPreferenceRoutes);
 app.use(healthRoutes);
+app.use(pdfRoutes); // Usar as novas rotas de PDF
 
 // --- Rota da Documentação ---
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

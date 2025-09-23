@@ -21,6 +21,8 @@
     "multer": "^2.0.2",
     "mysql2": "^3.14.5",
     "nanoid": "^5.1.5",
+    "pdfjs-dist": "^5.4.149",
+    "pdfkit": "^0.15.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },
