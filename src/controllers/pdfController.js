@@ -1,94 +1,141 @@
 import PDFDocument from 'pdfkit';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'; // Usar o build legacy para Node.js
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import fs from 'fs';
 import path from 'path';
-import { pathToFileURL } from 'url'; // Importar pathToFileURL
+import { pathToFileURL } from 'url';
+import { PNG } from 'pngjs';
+import jpeg from 'jpeg-js';
+
+// Lembre-se de instalar as dependências se ainda não o fez:
+// npm install pngjs jpeg-js
 
 // Configurar o worker para pdfjs-dist no Node.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(path.resolve(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs')).href;
 
-// Função para gerar PDF de uma receita
+/**
+ * Função para gerar um PDF a partir dos dados de uma receita.
+ * ESTA FUNÇÃO ESTAVA FALTANDO.
+ */
 export const generateRecipePdf = async (req, res) => {
-    const recipe = req.body; // Espera-se um JSON de receita no corpo da requisição
+    const recipe = req.body;
 
     if (!recipe || !recipe.title || !recipe.ingredients || !recipe.instructions) {
         return res.status(400).json({ message: 'Dados da receita incompletos para gerar o PDF.' });
     }
 
-    const doc = new PDFDocument();
-    const filename = `receita-${recipe.title.replace(/\s/g, '_')}.pdf`;
-    const filePath = path.join('uploads', filename); // Salva na pasta uploads
+    try {
+        const doc = new PDFDocument({ margin: 50 });
+        const filename = `receita-${recipe.title.replace(/\s+/g, '_').toLowerCase()}.pdf`;
+        const uploadsDir = 'uploads';
+        const filePath = path.join(uploadsDir, filename);
 
-    // Garante que a pasta 'uploads' existe
-    if (!fs.existsSync('uploads')) {
-        fs.mkdirSync('uploads');
-    }
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir);
+        }
 
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
+        const stream = fs.createWriteStream(filePath);
+        doc.pipe(stream);
 
-    doc.fontSize(25).text(recipe.title, { align: 'center' });
-    doc.moveDown();
+        doc.fontSize(24).font('Helvetica-Bold').text(recipe.title, { align: 'center' });
+        doc.moveDown(2);
 
-    if (recipe.description) {
-        doc.fontSize(14).text(recipe.description);
+        if (recipe.description) {
+            doc.fontSize(12).font('Helvetica').text(recipe.description);
+            doc.moveDown();
+        }
+
+        doc.fontSize(16).font('Helvetica-Bold').text('Ingredientes', { underline: true });
+        doc.moveDown(0.5);
+        recipe.ingredients.forEach(ingredient => {
+            doc.fontSize(12).font('Helvetica').list([ingredient], { bulletRadius: 2 });
+        });
         doc.moveDown();
-    }
 
-    doc.fontSize(16).text('Ingredientes:', { underline: true });
-    recipe.ingredients.forEach(ingredient => {
-        doc.fontSize(12).text(`- ${ingredient}`);
-    });
-    doc.moveDown();
+        doc.fontSize(16).font('Helvetica-Bold').text('Modo de Preparo', { underline: true });
+        doc.moveDown(0.5);
+        recipe.instructions.forEach((instruction, index) => {
+            doc.fontSize(12).font('Helvetica').text(`${index + 1}. ${instruction}`, { continued: false, paragraphGap: 5 });
+        });
 
-    doc.fontSize(16).text('Instruções:', { underline: true });
-    recipe.instructions.forEach((instruction, index) => {
-        doc.fontSize(12).text(`${index + 1}. ${instruction}`);
-    });
-    doc.moveDown();
+        doc.end();
 
-    doc.end();
-
-    stream.on('finish', () => {
-        res.download(filePath, filename, (err) => {
-            if (err) {
-                console.error('Erro ao enviar o PDF:', err);
-                res.status(500).json({ message: 'Erro ao baixar o PDF.' });
-            }
-            else {
-                // Opcional: remover o arquivo após o download
+        stream.on('finish', () => {
+            res.download(filePath, filename, (err) => {
+                if (err) console.error('Erro ao enviar o PDF:', err);
                 fs.unlink(filePath, (unlinkErr) => {
                     if (unlinkErr) console.error('Erro ao remover arquivo PDF temporário:', unlinkErr);
                 });
-            }
+            });
         });
-    });
 
-    stream.on('error', (err) => {
-        console.error('Erro ao gerar o PDF:', err);
-        res.status(500).json({ message: 'Erro ao gerar o PDF.' });
-    });
+        stream.on('error', (err) => {
+            console.error('Erro no stream ao gerar o PDF:', err);
+            if (!res.headersSent) res.status(500).json({ message: 'Erro ao gerar o PDF.' });
+        });
+    } catch (error) {
+        console.error('Erro ao gerar PDF:', error);
+        if (!res.headersSent) res.status(500).json({ message: 'Ocorreu um erro inesperado ao gerar o PDF.' });
+    }
 };
 
-// Função para ler e parsear PDF de uma receita
+/**
+ * Função para ler um PDF, extrair dados da receita E a imagem principal.
+ */
 export const parseRecipePdf = async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'Nenhum arquivo PDF enviado.' });
     }
 
-    try {
-        const dataBuffer = fs.readFileSync(req.file.path);
-        // Converter Buffer para Uint8Array
-        const uint8Array = new Uint8Array(dataBuffer);
-        
-        console.log('uint8Array.length:', uint8Array.length);
-        console.log('typeof pdfjsLib:', typeof pdfjsLib);
-        console.log('typeof pdfjsLib.getDocument:', typeof pdfjsLib.getDocument);
+    const tempFilePath = req.file.path;
 
-        // Carregar o PDF com pdfjs-dist
+    try {
+        const dataBuffer = fs.readFileSync(tempFilePath);
+        const uint8Array = new Uint8Array(dataBuffer);
         const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
         const pdfDocument = await loadingTask.promise;
         
+        // --- EXTRAÇÃO DE IMAGEM ---
+        let imageUrl = null;
+        const page = await pdfDocument.getPage(1); // Pega a primeira página
+        const operatorList = await page.getOperatorList();
+        const { OPS } = pdfjsLib;
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+            const op = operatorList.fnArray[i];
+            if (op === OPS.paintImageXObject) {
+                const imageKey = operatorList.argsArray[i][0];
+                const image = await page.objs.get(imageKey);
+                
+                const uploadsDir = 'uploads';
+                if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+
+                let imagePath;
+                if (image.kind === 1) { // JPEG
+                    imagePath = path.join(uploadsDir, `extracted-${Date.now()}.jpg`);
+                    fs.writeFileSync(imagePath, image.data);
+                } else { // Para outros formatos como PNG
+                    imagePath = path.join(uploadsDir, `extracted-${Date.now()}.png`);
+                    const png = new PNG({ width: image.width, height: image.height });
+                    // Converte os dados da imagem para o formato RGBA que a lib pngjs espera
+                    for (let y = 0; y < image.height; y++) {
+                        for (let x = 0; x < image.width; x++) {
+                            const idx = (image.width * y + x) << 2;
+                            const r_idx = (image.width * y + x) * 3;
+                            png.data[idx] = image.data[r_idx];
+                            png.data[idx+1] = image.data[r_idx+1];
+                            png.data[idx+2] = image.data[r_idx+2];
+                            png.data[idx+3] = 255; // Alpha (opacidade total)
+                        }
+                    }
+                    fs.writeFileSync(imagePath, PNG.sync.write(png));
+                }
+                
+                imageUrl = imagePath.replace(/\\/g, '/'); // Normaliza para formato de URL
+                break; // Pega apenas a primeira imagem e para
+            }
+        }
+        
+        // --- EXTRAÇÃO DE TEXTO (MÉTODO ROBUSTO) ---
         let fullText = '';
         for (let i = 1; i <= pdfDocument.numPages; i++) {
             const page = await pdfDocument.getPage(i);
@@ -96,63 +143,72 @@ export const parseRecipePdf = async (req, res) => {
             fullText += textContent.items.map(item => item.str).join(' ') + '\n';
         }
 
-        // Lógica de parsing para extrair informações da receita do texto
-        const extractedText = fullText;
-        console.log('Texto extraído do PDF:\n', extractedText);
-
-        // Exemplo BEM BÁSICO de extração (precisa ser aprimorado)
-        const recipe = {
-            title: 'Receita Extraída do PDF',
-            description: extractedText.substring(0, Math.min(extractedText.length, 200)) + (extractedText.length > 200 ? '...' : ''),
-            ingredients: [],
-            instructions: []
+        const recipeJson = {
+            titulo: '',
+            resumo: '',
+            grupos_ingredientes: [],
+            passos_preparo: [],
+            imagem_url: imageUrl,
         };
 
-        // Heurísticas simples para ingredientes e instruções
-        const lines = extractedText.split(/\r?\n/);
-        let inIngredients = false;
-        let inInstructions = false;
+        const KEYWORD_INGREDIENTS = /ingredientes/i;
+        const KEYWORD_INSTRUCTIONS = /modo de preparo/i;
 
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine.toLowerCase().includes('ingredientes:')) {
-                inIngredients = true;
-                inInstructions = false;
-                continue;
-            }
-            if (trimmedLine.toLowerCase().includes('instruções:') || trimmedLine.toLowerCase().includes('modo de preparo:')) {
-                inInstructions = true;
-                inIngredients = false;
-                continue;
-            }
+        let ingredientsBlock = '';
+        let instructionsBlock = '';
+        let mainBlock = fullText;
 
-            if (inIngredients && trimmedLine && !trimmedLine.toLowerCase().includes('instruções:')) {
-                recipe.ingredients.push(trimmedLine);
-            }
-            if (inInstructions && trimmedLine && !trimmedLine.toLowerCase().includes('ingredientes:')) {
-                recipe.instructions.push(trimmedLine);
+        if (fullText.match(KEYWORD_INGREDIENTS)) {
+            const parts = fullText.split(KEYWORD_INGREDIENTS);
+            mainBlock = parts[0];
+            const rest = parts.slice(1).join('Ingredientes');
+            
+            if (rest.match(KEYWORD_INSTRUCTIONS)) {
+                const subParts = rest.split(KEYWORD_INSTRUCTIONS);
+                ingredientsBlock = subParts[0];
+                instructionsBlock = subParts.slice(1).join('Modo de Preparo');
+            } else {
+                ingredientsBlock = rest;
             }
         }
 
-        // Limpeza básica para remover linhas vazias ou irrelevantes
-        recipe.ingredients = recipe.ingredients.filter(item => item.length > 3);
-        recipe.instructions = recipe.instructions.filter(item => item.length > 3);
+        const mainLines = mainBlock.split('\n').map(l => l.trim()).filter(Boolean);
+        if (mainLines.length > 0) {
+            recipeJson.titulo = mainLines[0];
+            recipeJson.resumo = mainLines.slice(1).join(' ').trim();
+        }
 
-        // Opcional: remover o arquivo PDF temporário após o processamento
-        fs.unlink(req.file.path, (unlinkErr) => {
-            if (unlinkErr) console.error('Erro ao remover arquivo PDF temporário:', unlinkErr);
-        });
+        const ingredientLines = ingredientsBlock.split('\n').map(l => l.trim()).filter(Boolean);
+        let currentGroup = null;
+        for(const line of ingredientLines) {
+            const isLikelyIngredient = /^\d|^\/|xícara|colher|gramas|g de|dentes|lata|caixa|ml|pitada|a gosto|^-|•/.test(line.toLowerCase());
+            
+            if (!isLikelyIngredient && line.split(' ').length < 5 && line.length > 1) { // É um título de grupo
+                currentGroup = { titulo: line, ordem: recipeJson.grupos_ingredientes.length + 1, ingredientes: [] };
+                recipeJson.grupos_ingredientes.push(currentGroup);
+            } else if(line.length > 1) { // É um ingrediente
+                if (!currentGroup) {
+                    currentGroup = { titulo: 'Ingredientes', ordem: 1, ingredientes: [] };
+                    recipeJson.grupos_ingredientes.push(currentGroup);
+                }
+                currentGroup.ingredientes.push({ descricao: line.replace(/^-|•\s*/, '').trim(), ordem: currentGroup.ingredientes.length + 1 });
+            }
+        }
+        
+        const instructionLines = instructionsBlock.split('\n').map(l => l.trim()).filter(Boolean);
+        for(const line of instructionLines) {
+            if(line.length > 1)
+            recipeJson.passos_preparo.push({ descricao: line.replace(/^\d+[\.\-\)]\s*/, '').trim(), ordem: recipeJson.passos_preparo.length + 1 });
+        }
 
-        res.json({ message: 'PDF processado com sucesso!', recipe });
+        res.json({ message: 'PDF processado e estruturado com sucesso!', recipe: recipeJson });
 
     } catch (error) {
         console.error('Erro ao parsear PDF:', error);
-        // Opcional: remover o arquivo PDF temporário em caso de erro
-        if (req.file) {
-            fs.unlink(req.file.path, (unlinkErr) => {
-                if (unlinkErr) console.error('Erro ao remover arquivo PDF temporário após erro:', unlinkErr);
-            });
-        }
-        res.status(500).json({ message: 'Erro ao processar o PDF.', error: error.message }); // Retorna a mensagem de erro detalhada
+        res.status(500).json({ message: 'Erro ao processar o PDF.', error: error.message });
+    } finally {
+        fs.unlink(tempFilePath, (unlinkErr) => {
+            if (unlinkErr) console.error('Erro ao remover arquivo PDF temporário:', unlinkErr);
+        });
     }
 };
