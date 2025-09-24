@@ -57,53 +57,7 @@ const upload = multer({
  *   description: Gerenciamento completo de receitas
  */
 
-/**
- * @swagger
- * components:
- *   schemas:
- *     Recipe:
- *       type: object
- *       properties:
- *         id:
- *           type: integer
- *         titulo:
- *           type: string
- *         resumo:
- *           type: string
- *         id_categoria:
- *           type: integer
- *         id_usuario_criador:
- *           type: integer
- *         id_produtor:
- *           type: integer
- *         dificuldade:
- *           type: string
- *         tempo_preparo_min:
- *           type: integer
- *         tempo_cozimento_min:
- *           type: integer
- *         porcoes:
- *           type: integer
- *         status:
- *           type: string
- *           enum: [pendente, ativo, inativo]
- *         calorias_kcal:
- *           type: number
- *         proteinas_g:
- *           type: number
- *         carboidratos_g:
- *           type: number
- *         gorduras_g:
- *           type: number
- *         id_midia_principal:
- *           type: integer
- *         created_at:
- *           type: string
- *           format: date-time
- *         updated_at:
- *           type: string
- *           format: date-time
- */
+
 
 // -----------------------------------------------------------------------------
 //                                   Rotas base
@@ -118,34 +72,49 @@ const upload = multer({
  *     parameters:
  *       - in: query
  *         name: page
- *         schema: { type: integer, default: 1 }
+ *         schema:
+ *           type: integer
+ *           default: 1
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 12, maximum: 100 }
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *           maximum: 100
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [pendente, ativo, inativo] }
+ *         schema:
+ *           type: string
+ *           enum: [pendente, ativo, inativo]
  *       - in: query
  *         name: categoria
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *       - in: query
  *         name: produtor
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *       - in: query
  *         name: tag
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *       - in: query
  *         name: search
  *         description: Busca por título/resumo
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *       - in: query
  *         name: sort
- *         description: Campo para ordenar (ex: r.created_at, r.titulo)
- *         schema: { type: string, default: r.id }
+ *         description: 'Campo para ordenar (ex: r.created_at, r.titulo)'
+ *         schema:
+ *           type: string
+ *           default: r.id
  *       - in: query
  *         name: order
  *         description: Direção (ASC|DESC)
- *         schema: { type: string, default: DESC }
+ *         schema:
+ *           type: string
+ *           default: DESC
  *     responses:
  *       200:
  *         description: 'Lista de receitas (com metadados de paginação)'
@@ -162,9 +131,49 @@ const upload = multer({
  *             type: object
  *             properties:
  *               data:
- *                 type: string
- *                 description: 'Objeto JSON com os dados da receita (título, resumo, etc.).'
- *                 example: '{"titulo":"Pizza Margherita","resumo":"A clássica pizza italiana.","id_categoria":1}'
+ *                 type: object
+ *                 description: 'Objeto JSON com os dados da receita.'
+ *                 properties:
+ *                   titulo: { type: string, example: "Pizza Margherita" }
+ *                   resumo: { type: string, example: "A clássica pizza italiana." }
+ *                   id_categoria: { type: integer, example: 1 }
+ *                   dificuldade: { type: string, enum: ["fácil", "médio", "difícil"], example: "médio" }
+ *                   tempo_preparo_min: { type: integer, example: 20 }
+ *                   tempo_cozimento_min: { type: integer, example: 15 }
+ *                   porcoes: { type: integer, example: 4 }
+ *                   status: { type: string, enum: ["pendente", "ativo", "inativo", "rascunho"], example: "pendente" }
+ *                   calorias_kcal: { type: number, format: float, example: 250.5 }
+ *                   proteinas_g: { type: number, format: float, example: 12.3 }
+ *                   carboidratos_g: { type: number, format: float, example: 30.0 }
+ *                   gorduras_g: { type: number, format: float, example: 10.5 }
+ *                   grupos_ingredientes:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         titulo: { type: string, example: "Massa" }
+ *                         ordem: { type: integer, example: 1 }
+ *                         ingredientes:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               descricao: { type: string, example: "200g de farinha" }
+ *                               observacao: { type: string, example: "peneirada" }
+ *                               ordem: { type: integer, example: 1 }
+ *                   passos_preparo:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         descricao: { type: string, example: "Misture a farinha e a água." }
+ *                         observacao: { type: string, example: "Até ficar homogêneo." }
+ *                         ordem: { type: integer, example: 1 }
+ *                   tags:
+ *                     type: array
+ *                     items:
+ *                       type: integer
+ *                       example: 801
  *               imagem:
  *                 type: string
  *                 format: binary
@@ -172,6 +181,10 @@ const upload = multer({
  *     responses:
  *       201:
  *         description: 'Receita criada com sucesso'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
  */
 router
   .route('/recipes')
@@ -218,8 +231,49 @@ router
  *             type: object
  *             properties:
  *               data:
- *                 type: string
- *                 description: 'Objeto JSON com os dados da receita (título, resumo, etc.).'
+ *                 type: object
+ *                 description: 'Objeto JSON com os dados da receita a serem atualizados.'
+ *                 properties:
+ *                   titulo: { type: string, example: "Bolo de Chocolate Atualizado" }
+ *                   resumo: { type: string, example: "Um delicioso bolo de chocolate com nova cobertura." }
+ *                   id_categoria: { type: integer, example: 101 }
+ *                   dificuldade: { type: string, enum: ["fácil", "médio", "difícil"], example: "difícil" }
+ *                   tempo_preparo_min: { type: integer, example: 35 }
+ *                   tempo_cozimento_min: { type: integer, example: 45 }
+ *                   porcoes: { type: integer, example: 10 }
+ *                   status: { type: string, enum: ["pendente", "ativo", "inativo", "rascunho"], example: "ativo" }
+ *                   calorias_kcal: { type: number, format: float, example: 380.0 }
+ *                   proteinas_g: { type: number, format: float, example: 18.0 }
+ *                   carboidratos_g: { type: number, format: float, example: 55.0 }
+ *                   gorduras_g: { type: number, format: float, example: 22.0 }
+ *                   grupos_ingredientes:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         titulo: { type: string, example: "Cobertura" }
+ *                         ordem: { type: integer, example: 2 }
+ *                         ingredientes:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               descricao: { type: string, example: "200g de chocolate meio amargo" }
+ *                               observacao: { type: string, example: "derretido" }
+ *                               ordem: { type: integer, example: 1 }
+ *                   passos_preparo:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         descricao: { type: string, example: "Cubra o bolo com a cobertura." }
+ *                         observacao: { type: string, example: "Espalhe uniformemente." }
+ *                         ordem: { type: integer, example: 3 }
+ *                   tags:
+ *                     type: array
+ *                     items:
+ *                       type: integer
+ *                       example: 802
  *               imagem:
  *                 type: string
  *                 format: binary
@@ -227,6 +281,10 @@ router
  *     responses:
  *       200:
  *         description: 'Receita atualizada com sucesso'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
  *       404:
  *         description: 'Receita não encontrada ou sem permissão'
  *   delete:
