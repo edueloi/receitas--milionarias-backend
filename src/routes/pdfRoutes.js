@@ -1,5 +1,4 @@
 import express from 'express';
-import { generateRecipePdf, parseRecipePdf } from '../controllers/pdfController.js';
 import multer from 'multer';
 import path from 'path';
 
@@ -59,7 +58,10 @@ const uploadPdf = multer({ storage: storage });
  *       500:
  *         description: Erro ao gerar o PDF
  */
-router.post('/pdf/generate-recipe', generateRecipePdf);
+router.post('/pdf/generate-recipe', async (req, res, next) => {
+  const { generateRecipePdf } = await import('../controllers/pdfController.js');
+  return generateRecipePdf(req, res, next);
+});
 
 /**
  * @swagger
@@ -90,6 +92,9 @@ router.post('/pdf/generate-recipe', generateRecipePdf);
  *       500:
  *         description: Erro ao processar o PDF
  */
-router.post('/pdf/parse-recipe', uploadPdf.single('pdfFile'), parseRecipePdf); // Descomentado
+router.post('/pdf/parse-recipe', uploadPdf.single('pdfFile'), async (req, res, next) => {
+  const { parseRecipePdf } = await import('../controllers/pdfController.js');
+  return parseRecipePdf(req, res, next);
+}); // Descomentado
 
 export default router;
