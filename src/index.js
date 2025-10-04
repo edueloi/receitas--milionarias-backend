@@ -1,4 +1,3 @@
-// src/index.js
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -6,6 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from '../swaggerConfig.js';
+import cron from 'node-cron'; // <-- NOVO: Importa o agendador de tarefas
+import { updatePendingCommissions } from './controllers/commissionController.js'; // <-- NOVO: Importa a função a ser agendada
 
 import userRoutes from './routes/userRoutes.js';
 import courseRoutes from './routes/courseRoutes.js';
@@ -18,7 +19,12 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 import earningsRoutes from './routes/earningsRoutes.js';
 import userPreferenceRoutes from './routes/userPreferenceRoutes.js';
 import healthRoutes from "./routes/healthRoutes.js";
-import pdfRoutes from './routes/pdfRoutes.js'; // Importar as novas rotas de PDF
+import pdfRoutes from './routes/pdfRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import commissionRoutes from './routes/commissionRoutes.js';
+import withdrawalRoutes from './routes/withdrawalRoutes.js';
+import stripeRoutes from './routes/stripeRoutes.js';
+import { handleWebhook } from './controllers/stripeController.js';
 
 // Define __dirname para Módulos ES
 const __filename = fileURLToPath(import.meta.url);
@@ -28,11 +34,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- Configuração de CORS ---
-// Nginx ou outro proxy reverso deve gerenciar os cabeçalhos CORS.
-// O backend aceita requisições de qualquer origem para simplificar.
 app.use(cors());
 
 // --- Middlewares ---
+app.post("/stripe-webhook", express.raw({ type: "application/json" }), handleWebhook);
 app.use(express.json());
 // --- Configuração para servir arquivos estáticos ---
 app.use('/uploads', express.static('uploads'));
@@ -49,7 +54,12 @@ app.use(analyticsRoutes);
 app.use(earningsRoutes);
 app.use(userPreferenceRoutes);
 app.use(healthRoutes);
-app.use(pdfRoutes); // Usar as novas rotas de PDF
+app.use(pdfRoutes);
+app.use(paymentRoutes);
+app.use(commissionRoutes);
+app.use(withdrawalRoutes);
+app.use(stripeRoutes);
+
 
 // --- Rota da Documentação ---
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -63,4 +73,15 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
     console.log(`📖 Documentação da API disponível em http://localhost:${PORT}/api-docs`);
+});
+
+// --- NOVO: Tarefa Agendada (Cron Job) ---
+// Esta tarefa verifica e atualiza as comissões de 'pendente' para 'disponivel'
+// A expressão '0 1 * * *' significa: "Execute à 1h da manhã, todos os dias".
+console.log('⏰ Agendando tarefa para atualização diária de comissões.');
+cron.schedule('0 1 * * *', () => {
+  console.log('🏃‍♂️ Executando a tarefa agendada para atualizar comissões pendentes...');
+  updatePendingCommissions();
+}, {
+  timezone: "America/Sao_Paulo" // É uma boa prática definir o fuso horário
 });
