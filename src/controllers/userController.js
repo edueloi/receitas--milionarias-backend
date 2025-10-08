@@ -76,38 +76,53 @@ export const registerUser = async (req, res) => {
 
 // --- LOGIN ---
 export const loginUser = async (req, res) => {
+    console.log("✅ ROTA DE LOGIN ACESSADA"); // <-- NOVO LOG
     const { email, senha } = req.body;
+    console.log("🟡 Tentando login:", email);
 
     if (!email || !senha) {
         return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
     }
 
     try {
+        console.log("🔍 Buscando usuário no banco...");
         const [users] = await db.query('SELECT id, senha_hash, id_permissao FROM usuarios WHERE email = ?', [email]);
-        if (users.length === 0) {
-            return res.status(401).json({ message: 'Credenciais inválidas.' }); // Usuário não encontrado
-        }
-        const user = users[0];
+        console.log("📦 Resultado da query:", users);
 
-        const isMatch = await bcrypt.compare(senha, user.senha_hash);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Credenciais inválidas.' }); // Senha incorreta
+        if (users.length === 0) {
+            console.log("❌ Nenhum usuário encontrado.");
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
-        
-        // Criar o token JWT
+
+        const user = users[0];
+        console.log("🧾 Usuário encontrado:", user);
+
+        console.log("🔐 Comparando senha...");
+        const isMatch = await bcrypt.compare(senha, user.senha_hash);
+        console.log("✅ Senha confere?", isMatch);
+
+        if (!isMatch) {
+            console.log("❌ Senha incorreta.");
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
+
         const payload = {
             id: user.id,
-            role: user.id_permissao // Inclui a permissão no token
+            role: user.id_permissao
         };
 
+        console.log("🎫 Gerando token JWT...");
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
+        console.log("✅ Token gerado com sucesso.");
 
         res.json({ message: 'Login bem-sucedido!', token });
+
     } catch (error) {
-        console.error('Erro ao fazer login:', error);
-        res.status(500).json({ message: 'Erro interno no servidor.' });
+        console.error('🔥 ERRO DETALHADO AO FAZER LOGIN:', error); // <-- LOG MELHORADO
+        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
     }
 };
+
 
 // --- GET ALL USERS (ADMIN) ---
 // GET /api/users

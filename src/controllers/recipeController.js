@@ -1,3 +1,5 @@
+// FULLY CORRECTED recipeController.js
+
 import db from '../config/db.js';
 import fs from 'fs';
 import path from 'path';
@@ -23,7 +25,8 @@ export const createRecipe = async (req, res) => {
         if (req.file) {
             const mediaSql = 'INSERT INTO midia (id_usuario_upload, url_arquivo, tipo_arquivo) VALUES (?, ?, ?)';
             const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
-            const [mediaResult] = await connection.query(mediaSql, [id_usuario_criador, req.file.path, tipo_arquivo]);
+            const relativePath = path.relative(process.cwd(), req.file.path).replace(/\\/g, '/');
+            const [mediaResult] = await connection.query(mediaSql, [id_usuario_criador, relativePath, tipo_arquivo]);
             id_midia_principal = mediaResult.insertId;
         }
 
@@ -173,22 +176,25 @@ export const updateRecipe = async (req, res) => {
         const id_usuario_criador = req.user.id;
         
         if (req.file) {
+            const relativePath = path.join('uploads', req.file.filename).replace(/\\/g, '/');
+            const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
+
             const [existingRecipe] = await connection.query('SELECT id_midia_principal FROM receitas WHERE id = ?', [id]);
 
             if (existingRecipe.length > 0 && existingRecipe[0].id_midia_principal) {
                 const [existingMedia] = await connection.query('SELECT url_arquivo FROM midia WHERE id = ?', [existingRecipe[0].id_midia_principal]);
                 if (existingMedia.length > 0 && existingMedia[0].url_arquivo) {
-                    fs.unlink(path.join(process.cwd(), existingMedia[0].url_arquivo), (err) => {
-                        if (err) console.error('Erro ao deletar arquivo antigo:', err);
-                    });
+                    if (!path.isAbsolute(existingMedia[0].url_arquivo)) {
+                        fs.unlink(path.join(process.cwd(), existingMedia[0].url_arquivo), (err) => {
+                            if (err) console.error('Erro ao deletar arquivo antigo:', err);
+                        });
+                    }
                 }
                 const mediaUpdateSql = 'UPDATE midia SET id_usuario_upload = ?, url_arquivo = ?, tipo_arquivo = ? WHERE id = ?';
-                const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
-                await connection.query(mediaUpdateSql, [id_usuario_criador, req.file.path, tipo_arquivo, existingRecipe[0].id_midia_principal]);
+                await connection.query(mediaUpdateSql, [id_usuario_criador, relativePath, tipo_arquivo, existingRecipe[0].id_midia_principal]);
             } else {
                 const mediaInsertSql = 'INSERT INTO midia (id_usuario_upload, url_arquivo, tipo_arquivo) VALUES (?, ?, ?)';
-                const tipo_arquivo = req.file.mimetype.startsWith('image') ? 'imagem' : 'video';
-                const [mediaInsertResult] = await connection.query(mediaInsertSql, [id_usuario_criador, req.file.path, tipo_arquivo]);
+                const [mediaInsertResult] = await connection.query(mediaInsertSql, [id_usuario_criador, relativePath, tipo_arquivo]);
                 const new_id_midia_principal = mediaInsertResult.insertId;
 
                 const updateRecipeMediaSql = 'UPDATE receitas SET id_midia_principal = ? WHERE id = ? AND id_usuario_criador = ?';
@@ -355,8 +361,52 @@ export const deleteRecipe = async (req, res) => {
 export const getAllRecipes = async (req, res) => {
     const connection = await db.getConnection();
     try {
-        const [recipes] = await connection.query(
-            `
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 15;
+        const offset = (page - 1) * limit;
+        const { search, categorias, tags: tagsQuery, status, sort = 'r.id', order = 'DESC' } = req.query;
+
+        let whereClause = 'WHERE 1=1';
+        const whereParams = [];
+        
+        whereClause += ' AND r.status = ?';
+        whereParams.push(status || 'ativo');
+
+        if (search) {
+            whereClause += ' AND (r.titulo LIKE ? OR r.resumo LIKE ?)';
+            whereParams.push(`%${search}%`, `%${search}%`);
+        }
+
+        if (categorias) {
+            const categoryIds = categorias.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+            if (categoryIds.length > 0) {
+                whereClause += ` AND r.id_categoria IN (?)`;
+                whereParams.push(categoryIds);
+            }
+        }
+
+        if (tagsQuery) {
+            const tagIds = tagsQuery.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+            if (tagIds.length > 0) {
+                whereClause += `
+                    AND r.id IN (
+                        SELECT id_receita
+                        FROM receita_tags
+                        WHERE id_tag IN (?)
+                        GROUP BY id_receita
+                        HAVING COUNT(DISTINCT id_tag) = ?
+                    )
+                `;
+                whereParams.push(tagIds, tagIds.length);
+            }
+        }
+
+        const countQuery = `SELECT COUNT(r.id) as total FROM receitas AS r ${whereClause}`;
+        const [countResult] = await connection.query(countQuery, whereParams);
+        const totalItems = countResult[0].total;
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const dataQuery = `
             SELECT
                 r.*,
                 u.nome AS criador_nome,
@@ -374,21 +424,23 @@ export const getAllRecipes = async (req, res) => {
                 midia AS m ON r.id_midia_principal = m.id
             LEFT JOIN
                 categorias_receitas AS c ON r.id_categoria = c.id
-            ORDER BY
-                r.id DESC
-            `
-        );
+            ${whereClause}
+            ORDER BY ${sort} ${order}
+            LIMIT ?
+            OFFSET ?
+        `;
+        const dataParams = [...whereParams, limit, offset];
+        
+        const [recipes] = await connection.query(dataQuery, dataParams);
 
         const formattedRecipes = await Promise.all(recipes.map(async (recipe) => {
             const [tags] = await connection.query('SELECT t.id, t.nome FROM receita_tags rt JOIN tags t ON rt.id_tag = t.id WHERE rt.id_receita = ?', [recipe.id]);
-
             const criador = {
                 id: recipe.id_usuario_criador,
                 nome: recipe.criador_nome,
                 codigo_afiliado_proprio: recipe.criador_codigo_afiliado,
                 foto_perfil_url: recipe.criador_foto_url ? String(recipe.criador_foto_url).replace(/\\/g, '/') : null,
             };
-
             const categoria = recipe.categoria_id ? {
                 id: recipe.categoria_id,
                 nome: recipe.categoria_nome,
@@ -412,12 +464,68 @@ export const getAllRecipes = async (req, res) => {
             };
         }));
 
-        res.json(formattedRecipes);
+        res.json({
+            pagination: {
+                currentPage: page,
+                totalPages: totalPages,
+                totalItems: totalItems,
+                limit: limit
+            },
+            data: formattedRecipes
+        });
 
     } catch (error) {
         console.error('Erro ao buscar todas as receitas:', error);
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
     } finally {
         connection.release();
+    }
+};
+
+// GET /api/recipes/used-categories
+export const getUsedCategories = async (req, res) => {
+    try {
+        const [categories] = await db.query(`
+            SELECT DISTINCT
+                c.id,
+                c.nome
+            FROM
+                categorias_receitas AS c
+            JOIN
+                receitas AS r ON c.id = r.id_categoria
+            WHERE
+                r.status = 'ativo'
+            ORDER BY
+                c.nome;
+        `);
+        res.json(categories);
+    } catch (error) {
+        console.error('Erro ao buscar categorias usadas:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    }
+};
+
+// GET /api/recipes/used-tags
+export const getUsedTags = async (req, res) => {
+    try {
+        const [tags] = await db.query(`
+            SELECT DISTINCT
+                t.id,
+                t.nome
+            FROM
+                tags AS t
+            JOIN
+                receita_tags AS rt ON t.id = rt.id_tag
+            JOIN
+                receitas AS r ON rt.id_receita = r.id
+            WHERE
+                r.status = 'ativo'
+            ORDER BY
+                t.nome;
+        `);
+        res.json(tags);
+    } catch (error) {
+        console.error('Erro ao buscar tags usadas:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
     }
 };
