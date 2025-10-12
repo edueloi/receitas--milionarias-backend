@@ -5,6 +5,9 @@ import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import stripePackage from "stripe";
+
+const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 
 // --- CADASTRO ---
 export const registerUser = async (req, res) => {
@@ -564,5 +567,53 @@ export const resetPassword = async (req, res) => {
     } catch (error) {
         console.error('Erro ao redefinir senha:', error);
         res.status(500).json({ message: 'Erro interno no servidor.' });
+    }
+};
+
+// --- Sincronização Manual com Stripe ---
+export const syncUserStatusFromStripe = async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: 'O email do usuário é obrigatório.' });
+    }
+
+    try {
+        // 1. Find the user in the local database
+        const [users] = await db.query('SELECT id, id_status FROM usuarios WHERE email = ?', [email]);
+        if (users.length === 0) {
+            return res.status(404).json({ message: 'Usuário não encontrado no banco de dados local.' });
+        }
+        const user = users[0];
+
+        // If user is already active, no need to check Stripe
+        if (user.id_status === 1) {
+            return res.json({ message: 'Usuário já está ativo.' });
+        }
+
+        // 2. Find the customer in Stripe by email
+        const customers = await stripe.customers.list({ email: email, limit: 1 });
+        if (customers.data.length === 0) {
+            return res.status(404).json({ message: 'Nenhum cliente encontrado no Stripe com este email.' });
+        }
+        const customerId = customers.data[0].id;
+
+        // 3. Find checkout sessions for that customer
+        const sessions = await stripe.checkout.sessions.list({ customer: customerId });
+        
+        // 4. Check if any session was paid
+        const hasPaidSession = sessions.data.some(session => session.payment_status === 'paid');
+
+        if (hasPaidSession) {
+            // 5. Activate the user in the local database
+            await db.query('UPDATE usuarios SET id_status = 1 WHERE id = ?', [user.id]);
+            return res.json({ message: 'Pagamento confirmado! Usuário ativado com sucesso.' });
+        } else {
+            return res.status(402).json({ message: 'Nenhum pagamento confirmado encontrado no Stripe para este usuário.' });
+        }
+
+    } catch (error) {
+        console.error('Erro ao sincronizar status do Stripe:', error);
+        res.status(500).json({ message: 'Erro interno no servidor ao comunicar com o Stripe.', error: error.message });
     }
 };

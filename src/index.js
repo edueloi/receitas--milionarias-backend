@@ -1,8 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config({ path: '.env.development' });
-console.log('🔑 Stripe Key carregada:', process.env.STRIPE_SECRET_KEY ? '✅ OK' : '❌ VAZIA');
-
-
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -28,6 +23,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import commissionRoutes from './routes/commissionRoutes.js';
 import withdrawalRoutes from './routes/withdrawalRoutes.js';
 import stripeRoutes from './routes/stripeRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
 import { handleWebhook } from './controllers/stripeController.js';
 
 // Define __dirname para Módulos ES
@@ -69,6 +65,7 @@ app.use(paymentRoutes);
 app.use(commissionRoutes);
 app.use(withdrawalRoutes);
 app.use(stripeRoutes);
+app.use(dashboardRoutes);
 
 
 // --- Rota da Documentação ---

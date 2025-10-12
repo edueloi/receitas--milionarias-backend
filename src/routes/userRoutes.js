@@ -12,7 +12,8 @@ import {
     resetPassword,
     checkSubscriptions,
     preRegisterUser,
-    updateUser
+    updateUser,
+    syncUserStatusFromStripe
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
@@ -413,6 +414,36 @@ router.post('/users/pre-register', preRegisterUser);
  *                   example: Erro interno no servidor.
  */
 router.post('/users/pre-register', preRegisterUser);
+
+/**
+ * @swagger
+ * /users/sync-stripe:
+ *   post:
+ *     summary: (Admin/Dev) Sincroniza o status de um usuário com base nos pagamentos do Stripe
+ *     tags: [Usuários, Admin]
+ *     description: Verifica manualmente no Stripe se um usuário com um determinado email realizou um pagamento e, em caso afirmativo, atualiza seu status para 'Ativo' no banco de dados local. Útil para corrigir casos em que o webhook falhou.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: 'usuario.pendente@example.com'
+ *     responses:
+ *       200:
+ *         description: Status do usuário verificado e/ou atualizado com sucesso.
+ *       402:
+ *         description: Nenhum pagamento confirmado encontrado no Stripe.
+ *       404:
+ *         description: Usuário não encontrado no banco de dados local ou no Stripe.
+ */
+router.post('/users/sync-stripe', syncUserStatusFromStripe);
 
 
 router.get("/users", authMiddleware, getAllUsers);
