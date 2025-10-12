@@ -78,6 +78,8 @@ export const createCheckoutSession = async (req, res) => {
   }
 };
 
+import db from "../config/db.js"; // IMPORTANTE: Adicionar import do DB
+
 // Webhook para lidar com eventos do Stripe
 export const handleWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
@@ -96,66 +98,127 @@ export const handleWebhook = async (req, res) => {
     const invoice = event.data.object;
     console.log(`✅ Fatura [${invoice.id}] paga com sucesso.`);
 
-    // Se o pagamento da fatura foi bem-sucedido
     if (invoice.status === "paid") {
-      const subscriptionId = invoice.subscription;
-      const customerId = invoice.customer;
+      // Evita duplicidade
+      const [existing] = await db.query(
+        "SELECT id FROM pagamentos WHERE id_pagamento_gateway = ?",
+        [invoice.id]
+      );
+      if (existing.length > 0) {
+        return res.status(200).send("Pagamento já processado.");
+      }
 
-      // ====================================================================
-      // LÓGICA DE TRANSFERÊNCIA PARA AFILIADO
-      // ====================================================================
+      const connection = await db.getConnection();
+      await connection.beginTransaction();
 
-      // 1. Busque a assinatura no SEU banco de dados para ver se tem um afiliado.
-      //    Exemplo: const subscriptionData = await yourDB.findSubscription({ stripeSubscriptionId: subscriptionId });
-      //    Para este exemplo, vamos simular que encontramos os dados:
-      const subscriptionData = {
-        affiliateId: "user_afiliado_123", // ID do afiliado no SEU sistema
-      };
+      try {
+        // 1. Buscar dados da assinatura no Stripe para pegar o metadata
+        const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+        const affiliateId = subscription.metadata.affiliate_id;
 
-      // 2. Verifique se esta assinatura foi indicada por um afiliado
-      if (subscriptionData && subscriptionData.affiliateId) {
-        // 3. Busque os dados do afiliado no SEU banco de dados para pegar o ID da conta Stripe dele
-        //    Exemplo: const affiliate = await yourDB.findUser({ userId: subscriptionData.affiliateId });
-        const affiliate = {
-          stripeAccountId: "acct_1SEc1v3Qt7iOJNgH", // ID da Conta Conectada do afiliado (exemplo)
-        };
+        // 2. Buscar nosso usuário interno pelo ID de cliente do Stripe
+        const [userRows] = await connection.query(
+          "SELECT id FROM usuarios WHERE stripe_customer_id = ?",
+          [invoice.customer]
+        );
+        const userId = userRows?.[0]?.id;
 
-        if (affiliate && affiliate.stripeAccountId) {
-          try {
-            // 4. Crie a transferência de R$ 9,90 para o afiliado
-            const transfer = await stripe.transfers.create({
-              amount: 990, // Valor em centavos!
-              currency: "brl",
-              destination: affiliate.stripeAccountId,
-              // Liga a transferência a este pagamento específico para seu controle
-              transfer_group: `sub_${subscriptionId}`,
-            });
-            console.log(
-              `💸 Transferência de R$ 9,90 realizada com sucesso para o afiliado ${affiliate.stripeAccountId}`
-            );
-          } catch (error) {
-            console.error(
-              "❌ Falha ao criar transferência para afiliado:",
-              error.message
-            );
-          }
+        if (!userId) {
+          throw new Error(`Usuário não encontrado para stripe_customer_id: ${invoice.customer}`);
         }
-      } else {
-        console.log(" assinante não foi indicado por um afiliado.");
+
+        // 3. Registrar o pagamento na tabela `pagamentos`
+        const [paymentResult] = await connection.query(
+          `INSERT INTO pagamentos 
+            (id_usuario, id_pagamento_gateway, valor, status, metodo_pagamento, data_pagamento, fonte)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            invoice.id, // ID da fatura do Stripe
+            (invoice.amount_paid / 100).toFixed(2), // Valor em reais
+            "aprovado",
+            "stripe_card", // Método
+            new Date(invoice.created * 1000), // Data do pagamento
+            "stripe", // Fonte
+          ]
+        );
+        const paymentOriginId = paymentResult.insertId;
+
+        // 4. Se houver um afiliado, registrar a comissão
+        if (affiliateId) {
+          const commissionValue = 9.9; // Valor fixo da comissão
+          const releaseDate = new Date();
+          releaseDate.setDate(releaseDate.getDate() + 45); // Data de liberação
+
+          await connection.query(
+            `INSERT INTO comissoes 
+              (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, data_liberacao, fonte)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              affiliateId,
+              userId,
+              paymentOriginId,
+              commissionValue,
+              "pendente",
+              releaseDate,
+              "stripe", // Fonte
+            ]
+          );
+          console.log(`✅ Comissão de R$${commissionValue} registrada para o afiliado ${affiliateId}.`);
+        }
+
+        await connection.commit();
+      } catch (trxErr) {
+        await connection.rollback();
+        console.error("❌ Erro na transação do webhook do Stripe:", trxErr);
+        return res.status(500).send("Erro interno ao processar o pagamento do Stripe.");
+      } finally {
+        connection.release();
       }
     }
   }
 
-  // Liberação de acesso para o primeiro pagamento
+  // Liberação de acesso e CRIAÇÃO DE USUÁRIO para o primeiro pagamento
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+
     if (session.payment_status === "paid") {
       console.log(
-        `🎉 Primeiro pagamento da assinatura [${session.subscription}] realizado! Liberando acesso...`
+        `🎉 Primeiro pagamento da assinatura [${session.subscription}] realizado! Processando usuário...`
       );
-      // AQUI: Lógica para mudar o status do usuário no seu DB para "ativo"
-      // const userId = session.client_reference_id;
-      // await yourDB.updateUser(userId, { status: 'ativo', stripeCustomerId: session.customer });
+
+      const customerDetails = session.customer_details;
+      const stripeCustomerId = session.customer;
+      const userEmail = customerDetails.email;
+
+      // O nome pode vir de várias formas, vamos garantir que pegamos um.
+      const nameParts = customerDetails.name ? customerDetails.name.split(' ') : ['Novo', 'Usuário'];
+      const firstName = nameParts.shift() || 'Usuário';
+      const lastName = nameParts.join(' ') || 'Sem Sobrenome';
+
+      try {
+        // Verifica se o usuário já existe
+        const [existingUsers] = await db.query("SELECT id FROM usuarios WHERE email = ?", [userEmail]);
+
+        if (existingUsers.length === 0) {
+          // --- CRIA O USUÁRIO ---
+          console.log(`✨ Usuário com email ${userEmail} não encontrado. Criando novo usuário...`);
+          const [result] = await db.query(
+            `INSERT INTO usuarios (nome, sobrenome, email, id_status, id_permissao, stripe_customer_id) VALUES (?, ?, ?, ?, ?, ?)`,
+            [firstName, lastName, userEmail, 1, 2, stripeCustomerId] // id_status=1 (Ativo), id_permissao=2 (Usuario)
+          );
+          console.log(`✅ Usuário criado com sucesso! ID: ${result.insertId}`);
+        } else {
+          // --- ATUALIZA O USUÁRIO EXISTENTE ---
+          const userId = existingUsers[0].id;
+          console.log(`✨ Usuário com email ${userEmail} já existe (ID: ${userId}). Atualizando stripe_customer_id...`);
+          await db.query("UPDATE usuarios SET stripe_customer_id = ?, id_status = ? WHERE id = ?", [stripeCustomerId, 1, userId]);
+          console.log(`✅ Usuário atualizado com sucesso!`);
+        }
+      } catch (dbError) {
+        console.error("❌ Erro ao salvar ou atualizar usuário no banco de dados:", dbError);
+        // Não retorna erro 500 para o Stripe não tentar reenviar o webhook indefinidamente por um erro de DB.
+      }
     }
   }
 

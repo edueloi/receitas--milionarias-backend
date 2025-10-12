@@ -11,6 +11,7 @@ import {
     forgotPassword,
     resetPassword,
     checkSubscriptions,
+    preRegisterUser,
     updateUser
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
@@ -52,6 +53,7 @@ const router = express.Router();
  *       409:
  *         description: Email ou CPF já em uso
  */
+router.post('/users/register', registerUser);
 
 /**
  * @swagger
@@ -316,6 +318,102 @@ router.put('/users/:id', authMiddleware, updateUser);
  */
 // Recomenda-se proteger este endpoint com uma chave de API ou outra estratégia
 router.post('/users/cron/check-subscriptions', checkSubscriptions);
+
+router.post('/users/pre-register', preRegisterUser);
+/**
+ * @swagger
+ * /users/pre-register:
+ *   post:
+ *     summary: Cria um pré-cadastro de usuário antes do pagamento
+ *     description: Realiza o pré-cadastro do usuário com status "pendente", gerando o registro no banco antes do pagamento Stripe. Após o pagamento, o status é atualizado para "ativo".
+ *     tags: [Usuários]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - firstName
+ *               - lastName
+ *               - email
+ *               - password
+ *               - cpf
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *                 example: João
+ *               lastName:
+ *                 type: string
+ *                 example: Silva
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: joao.silva@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: SenhaSegura123!
+ *               cpf:
+ *                 type: string
+ *                 example: 123.456.789-00
+ *               phone:
+ *                 type: string
+ *                 example: (11) 98888-9999
+ *               birthDate:
+ *                 type: string
+ *                 format: date
+ *                 example: 1990-05-14
+ *               affiliateCode:
+ *                 type: string
+ *                 example: afiliado_1711234455
+ *     responses:
+ *       201:
+ *         description: Pré-cadastro realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Pré-cadastro realizado com sucesso!
+ *                 userId:
+ *                   type: integer
+ *                   example: 42
+ *       400:
+ *         description: Campos obrigatórios ausentes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Campos obrigatórios ausentes.
+ *       409:
+ *         description: Email ou CPF já está em uso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Email ou CPF já está em uso.
+ *       500:
+ *         description: Erro interno no servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Erro interno no servidor.
+ */
+router.post('/users/pre-register', preRegisterUser);
+
 
 router.get("/users", authMiddleware, getAllUsers);
 

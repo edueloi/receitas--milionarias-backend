@@ -24,7 +24,7 @@ export const registerUser = async (req, res) => {
         cep,
         cidade,
         estado,
-        id_afiliado_indicador
+        codigo_indicador // Alterado de id_afiliado_indicador para o código de texto
     } = req.body;
 
     if (!email || !senha || !nome || !cpf) {
@@ -37,6 +37,19 @@ export const registerUser = async (req, res) => {
             return res.status(409).json({ message: 'Email ou CPF já está em uso.' });
         }
 
+        // --- Lógica para encontrar o ID do indicador a partir do código ---
+        let id_afiliado_indicador = null;
+        if (codigo_indicador) {
+            const [indicator] = await db.query('SELECT id FROM usuarios WHERE codigo_afiliado_proprio = ?', [codigo_indicador]);
+            if (indicator.length > 0) {
+                id_afiliado_indicador = indicator[0].id;
+            } else {
+                console.warn(`Código de afiliado indicador "${codigo_indicador}" não encontrado.`);
+                // Opcional: poderia retornar um erro aqui se o código for inválido
+            }
+        }
+        // --- Fim da lógica ---
+
         const salt = await bcrypt.genSalt(10);
         const senha_hash = await bcrypt.hash(senha, salt);
 
@@ -44,7 +57,7 @@ export const registerUser = async (req, res) => {
         const codigo_afiliado_proprio = `afiliado_${new Date().getTime()}`;
 
         const id_permissao = req.body.id_permissao || 6; // Padrão para 'afiliado' se não for fornecido
-        const id_status_padrao = 1;    // 'Ativo'
+        const id_status_padrao = 3;    // 'Pendente'
 
         // Define as datas de expiração
         const data_expiracao_assinatura = new Date();
@@ -61,7 +74,8 @@ export const registerUser = async (req, res) => {
         const values = [
             nome, sobrenome, email, senha_hash, cpf, rg, data_nascimento, telefone,
             endereco, numero_endereco, complemento, bairro, cep, cidade, estado,
-            codigo_afiliado_proprio, id_afiliado_indicador || null, id_permissao, id_status_padrao,
+            codigo_afiliado_proprio, id_afiliado_indicador, // Agora é o ID numérico ou null
+            id_permissao, id_status_padrao,
             data_expiracao_assinatura, null
         ];
 
@@ -76,50 +90,56 @@ export const registerUser = async (req, res) => {
 
 // --- LOGIN ---
 export const loginUser = async (req, res) => {
-    console.log("✅ ROTA DE LOGIN ACESSADA"); // <-- NOVO LOG
     const { email, senha } = req.body;
-    console.log("🟡 Tentando login:", email);
 
     if (!email || !senha) {
         return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
     }
 
     try {
-        console.log("🔍 Buscando usuário no banco...");
-        const [users] = await db.query('SELECT id, senha_hash, id_permissao FROM usuarios WHERE email = ?', [email]);
-        console.log("📦 Resultado da query:", users);
+        // 1. Buscar usuário e incluir o status
+        const [users] = await db.query('SELECT id, senha_hash, id_permissao, id_status FROM usuarios WHERE email = ?', [email]);
 
         if (users.length === 0) {
-            console.log("❌ Nenhum usuário encontrado.");
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
         const user = users[0];
-        console.log("🧾 Usuário encontrado:", user);
 
-        console.log("🔐 Comparando senha...");
+        // 2. Comparar a senha
         const isMatch = await bcrypt.compare(senha, user.senha_hash);
-        console.log("✅ Senha confere?", isMatch);
-
         if (!isMatch) {
-            console.log("❌ Senha incorreta.");
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
+        // 3. Verificar o status do usuário
+        // Status: 1: Ativo, 2: Inativo, 3: Pendente, 4: Bloqueado
+        switch (user.id_status) {
+            case 1: // Ativo
+                // Continua para gerar o token
+                break;
+            case 3: // Pendente
+                return res.status(403).json({ message: 'Cadastro pendente. É necessário efetuar o pagamento para ativar sua conta.' });
+            case 2: // Inativo
+            case 4: // Bloqueado
+                return res.status(403).json({ message: 'Acesso bloqueado. Por favor, entre em contato com o suporte.' });
+            default:
+                return res.status(500).json({ message: 'Status de usuário desconhecido. Contate o suporte.' });
+        }
+
+        // 4. Gerar e retornar o token JWT se o status for Ativo
         const payload = {
             id: user.id,
             role: user.id_permissao
         };
 
-        console.log("🎫 Gerando token JWT...");
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
-        console.log("✅ Token gerado com sucesso.");
 
         res.json({ message: 'Login bem-sucedido!', token });
 
     } catch (error) {
-        console.error('🔥 ERRO DETALHADO AO FAZER LOGIN:', error); // <-- LOG MELHORADO
-        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+        console.error('Erro ao fazer login:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.' });
     }
 };
 
@@ -151,6 +171,60 @@ export const getAllUsers = async (req, res) => {
     console.error("Erro ao buscar todos os usuários:", error);
     res.status(500).json({ message: "Erro interno no servidor." });
   }
+};
+
+export const preRegisterUser = async (req, res) => {
+    const {
+        firstName,
+        lastName,
+        email,
+        password,
+        cpf,
+        phone,
+        birthDate,
+        affiliateCode
+    } = req.body;
+
+    if (!email || !password || !cpf || !firstName) {
+        return res.status(400).json({ message: 'Campos obrigatórios ausentes.' });
+    }
+
+    try {
+        const [existingUser] = await db.query(
+            'SELECT id FROM usuarios WHERE email = ? OR cpf = ?',
+            [email, cpf]
+        );
+        if (existingUser.length > 0) {
+            return res.status(409).json({ message: 'Email ou CPF já está em uso.' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const senha_hash = await bcrypt.hash(password, salt);
+
+        const codigo_afiliado_proprio = `afiliado_${Date.now()}`;
+        const id_status_padrao = 3; // 'Pendente' até pagar
+        const id_permissao = 6; // afiliado padrão
+
+        const sql = `
+            INSERT INTO usuarios 
+            (nome, sobrenome, email, senha_hash, cpf, telefone, data_nascimento, codigo_afiliado_proprio, id_afiliado_indicador, id_permissao, id_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const values = [
+            firstName, lastName, email, senha_hash, cpf, phone, birthDate,
+            codigo_afiliado_proprio, affiliateCode || null, id_permissao, id_status_padrao
+        ];
+
+        const [result] = await db.query(sql, values);
+
+        res.status(201).json({ 
+            message: 'Pré-cadastro realizado com sucesso!', 
+            userId: result.insertId 
+        });
+    } catch (error) {
+        console.error('Erro ao realizar pré-cadastro:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.' });
+    }
 };
 
 
