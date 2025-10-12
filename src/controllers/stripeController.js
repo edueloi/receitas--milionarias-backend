@@ -39,7 +39,7 @@ export const createAffiliateAccount = async (req, res) => {
 
 // Rota para o CADASTRO DO CLIENTE FINAL
 export const createCheckoutSession = async (req, res) => {
-  const { email, firstName, lastName, affiliateId } = req.body;
+  const { email, firstName, lastName, affiliateId, success_url, cancel_url } = req.body;
 
   console.log(`[STRIPE] 🚀 Iniciando createCheckoutSession para: ${email}`);
 
@@ -52,8 +52,8 @@ export const createCheckoutSession = async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: email,
       client_reference_id: `user_${Date.now()}`,
-      success_url: "http://localhost:3003/frontend/success.html?cs={CHECKOUT_SESSION_ID}",
-      cancel_url: "http://localhost:3003/frontend/index.html",
+      success_url: success_url || "http://localhost:3003/frontend/success.html?cs={CHECKOUT_SESSION_ID}",
+      cancel_url: cancel_url || "http://localhost:3003/frontend/index.html",
       metadata: { affiliate_id: affiliateId || "" },
       subscription_data: { metadata: { affiliate_id: affiliateId || "" } },
     };
