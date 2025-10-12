@@ -40,5 +40,6 @@ const router = express.Router();
  *         description: Erro interno no servidor.
  */
 router.get('/dashboard-data', authMiddleware, getDashboardData);
+router.get('/dashboard-data/me', authMiddleware, getDashboardData);
 
 export default router;

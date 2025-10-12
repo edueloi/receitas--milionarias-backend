@@ -6,6 +6,7 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import stripePackage from "stripe";
+import crypto from 'crypto';
 
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 

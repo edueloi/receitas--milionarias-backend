@@ -21,16 +21,22 @@ export const createAffiliateAccount = async (req, res) => {
 
     // IMPORTANTE: Salve o ID da conta (account.id) no seu banco de dados, associado a este usuário.
     console.log(`Conta Conectada criada para ${userEmail}. ID: ${account.id}`);
-    // Exemplo: await yourDB.updateUser(userId, { stripeAccountId: account.id });
+    await db.query(
+      "UPDATE usuarios SET stripe_account_id = ? WHERE id = ?",
+      [account.id, userId]
+    );
 
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: "http://localhost:3003/success.html", // Volta para o início se expirar
-      return_url: "http://localhost:3003/", // Volta para sucesso após cadastro
+      refresh_url: `${process.env.FRONTEND_URL}/onboarding/erro`,
+      return_url: `${process.env.FRONTEND_URL}/onboarding/sucesso`,
       type: "account_onboarding",
     });
 
-    res.json({ url: accountLink.url });
+    res.json({ 
+      accountId: account.id,
+      onboardingUrl: accountLink.url 
+    });
   } catch (error) {
     console.error("❌ Erro ao criar conta de afiliado:", error.message);
     res.status(500).send({ error: "Erro ao criar conta de afiliado" });
@@ -187,37 +193,20 @@ export const handleWebhook = async (req, res) => {
         `🎉 Primeiro pagamento da assinatura [${session.subscription}] realizado! Processando usuário...`
       );
 
-      const customerDetails = session.customer_details;
       const stripeCustomerId = session.customer;
-      const userEmail = customerDetails.email;
+      const userId = session.metadata?.userId; // Pega o ID do nosso sistema
 
-      // O nome pode vir de várias formas, vamos garantir que pegamos um.
-      const nameParts = customerDetails.name ? customerDetails.name.split(' ') : ['Novo', 'Usuário'];
-      const firstName = nameParts.shift() || 'Usuário';
-      const lastName = nameParts.join(' ') || 'Sem Sobrenome';
-
-      try {
-        // Verifica se o usuário já existe
-        const [existingUsers] = await db.query("SELECT id FROM usuarios WHERE email = ?", [userEmail]);
-
-        if (existingUsers.length === 0) {
-          // --- CRIA O USUÁRIO ---
-          console.log(`✨ Usuário com email ${userEmail} não encontrado. Criando novo usuário...`);
-          const [result] = await db.query(
-            `INSERT INTO usuarios (nome, sobrenome, email, id_status, id_permissao, stripe_customer_id) VALUES (?, ?, ?, ?, ?, ?)`,
-            [firstName, lastName, userEmail, 1, 2, stripeCustomerId] // id_status=1 (Ativo), id_permissao=2 (Usuario)
+      if (stripeCustomerId && userId) {
+        try {
+          console.log(`✨ Vinculando stripe_customer_id ${stripeCustomerId} ao usuário ${userId}...`);
+          await db.query(
+            "UPDATE usuarios SET stripe_customer_id = ?, id_status = 1 WHERE id = ?",
+            [stripeCustomerId, userId]
           );
-          console.log(`✅ Usuário criado com sucesso! ID: ${result.insertId}`);
-        } else {
-          // --- ATUALIZA O USUÁRIO EXISTENTE ---
-          const userId = existingUsers[0].id;
-          console.log(`✨ Usuário com email ${userEmail} já existe (ID: ${userId}). Atualizando stripe_customer_id...`);
-          await db.query("UPDATE usuarios SET stripe_customer_id = ?, id_status = ? WHERE id = ?", [stripeCustomerId, 1, userId]);
           console.log(`✅ Usuário atualizado com sucesso!`);
+        } catch (dbError) {
+          console.error("❌ Erro ao vincular stripe_customer_id ao usuário:", dbError);
         }
-      } catch (dbError) {
-        console.error("❌ Erro ao salvar ou atualizar usuário no banco de dados:", dbError);
-        // Não retorna erro 500 para o Stripe não tentar reenviar o webhook indefinidamente por um erro de DB.
       }
     }
   }

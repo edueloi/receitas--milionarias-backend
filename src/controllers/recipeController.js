@@ -369,8 +369,8 @@ export const getAllRecipes = async (req, res) => {
         let whereClause = 'WHERE 1=1';
         const whereParams = [];
         
-        whereClause += ' AND r.status = ?';
-        whereParams.push(status || 'ativo');
+        // whereClause += ' AND r.status = ?';
+        // whereParams.push(status || 'ativo');
 
         if (search) {
             whereClause += ' AND (r.titulo LIKE ? OR r.resumo LIKE ?)';
@@ -433,18 +433,30 @@ export const getAllRecipes = async (req, res) => {
         
         const [recipes] = await connection.query(dataQuery, dataParams);
 
+        const normalizeImageUrl = (url) => {
+            if (!url) {
+                return null;
+            }
+            const normalizedUrl = url.replace(/\\/g, '/');
+            const uploadsIndex = normalizedUrl.indexOf('uploads/');
+            if (uploadsIndex !== -1) {
+                return normalizedUrl.substring(uploadsIndex);
+            }
+            return url;
+        };
+
         const formattedRecipes = await Promise.all(recipes.map(async (recipe) => {
             const [tags] = await connection.query('SELECT t.id, t.nome FROM receita_tags rt JOIN tags t ON rt.id_tag = t.id WHERE rt.id_receita = ?', [recipe.id]);
             const criador = {
                 id: recipe.id_usuario_criador,
                 nome: recipe.criador_nome,
                 codigo_afiliado_proprio: recipe.criador_codigo_afiliado,
-                foto_perfil_url: recipe.criador_foto_url ? String(recipe.criador_foto_url).replace(/\\/g, '/') : null,
+                foto_perfil_url: normalizeImageUrl(recipe.criador_foto_url),
             };
             const categoria = recipe.categoria_id ? {
                 id: recipe.categoria_id,
                 nome: recipe.categoria_nome,
-                imagem_url: recipe.categoria_imagem_url ? String(recipe.categoria_imagem_url).replace(/\\/g, '/') : null
+                imagem_url: normalizeImageUrl(recipe.categoria_imagem_url)
             } : null;
 
             delete recipe.id_usuario_criador;
@@ -457,7 +469,7 @@ export const getAllRecipes = async (req, res) => {
 
             return {
                 ...recipe,
-                imagem_url: recipe.imagem_url ? String(recipe.imagem_url).replace(/\\/g, '/') : null,
+                imagem_url: normalizeImageUrl(recipe.imagem_url),
                 criador: criador,
                 categoria: categoria,
                 tags: tags
