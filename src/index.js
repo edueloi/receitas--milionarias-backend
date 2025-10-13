@@ -39,6 +39,7 @@ app.use(cors());
 // --- Middlewares ---
 app.post("/stripe-webhook", express.raw({ type: "application/json" }), handleWebhook);
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 // --- Configuração para servir arquivos estáticos ---
 app.use('/uploads', express.static('uploads'));
 
