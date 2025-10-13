@@ -5,13 +5,29 @@ export const getCommissions = async (req, res) => {
   const affiliateId = req.user?.id;
   if (!affiliateId) return res.status(401).json({ error: 'Não autenticado.' });
 
-  try {
-    const [commissions] = await db.query(
-      'SELECT * FROM comissoes WHERE id_afiliado = ? ORDER BY data_criacao DESC',
-      [affiliateId]
-    );
+  console.log("User role:", req.user.role);
 
-    const balances = await calculateBalances(affiliateId);
+  try {
+    let commissions;
+    if (req.user.role === 1) {
+      [commissions] = await db.query(
+        `SELECT c.*, u.nome as nome_pagador
+         FROM comissoes c
+         JOIN usuarios u ON c.id_usuario_pagador = u.id
+         ORDER BY c.data_criacao DESC`
+      );
+    } else {
+      [commissions] = await db.query(
+        `SELECT c.*, u.nome as nome_pagador
+         FROM comissoes c
+         JOIN usuarios u ON c.id_usuario_pagador = u.id
+         WHERE c.id_afiliado = ?
+         ORDER BY c.data_criacao DESC`,
+        [affiliateId]
+      );
+    }
+
+    const balances = await calculateBalances(req.user);
 
     return res.json({ commissions, balances });
   } catch (error) {
@@ -38,14 +54,24 @@ export const updatePendingCommissions = async () => {
 };
 
 
-const calculateBalances = async (affiliateId) => {
-  const [rows] = await db.query(
-    `SELECT 
-        COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END), 0) AS saldo_pendente,
-        COALESCE(SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END), 0) AS saldo_disponivel
-     FROM comissoes 
-     WHERE id_afiliado = ?`,
-    [affiliateId]
-  );
-  return rows[0];
+const calculateBalances = async (user) => {
+  if (user.role === 1) {
+    const [rows] = await db.query(
+      `SELECT 
+          COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END), 0) AS saldo_pendente,
+          COALESCE(SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END), 0) AS saldo_disponivel
+       FROM comissoes`
+    );
+    return rows[0];
+  } else {
+    const [rows] = await db.query(
+      `SELECT 
+          COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END), 0) AS saldo_pendente,
+          COALESCE(SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END), 0) AS saldo_disponivel
+       FROM comissoes 
+       WHERE id_afiliado = ?`,
+      [user.id]
+    );
+    return rows[0];
+  }
 };

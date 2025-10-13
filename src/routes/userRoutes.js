@@ -13,7 +13,8 @@ import {
     checkSubscriptions,
     preRegisterUser,
     updateUser,
-    syncUserStatusFromStripe
+    syncUserStatusFromStripe,
+    getReferredUsers
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
@@ -447,5 +448,6 @@ router.post('/users/sync-stripe', syncUserStatusFromStripe);
 
 
 router.get("/users", authMiddleware, getAllUsers);
+router.get("/users/referred", authMiddleware, getReferredUsers);
 
 export default router;

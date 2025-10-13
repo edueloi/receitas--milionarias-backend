@@ -28,7 +28,7 @@ export const registerUser = async (req, res) => {
         cep,
         cidade,
         estado,
-        codigo_indicador // Alterado de id_afiliado_indicador para o código de texto
+        affiliateCode
     } = req.body;
 
     if (!email || !senha || !nome || !cpf) {
@@ -43,12 +43,15 @@ export const registerUser = async (req, res) => {
 
         // --- Lógica para encontrar o ID do indicador a partir do código ---
         let id_afiliado_indicador = null;
-        if (codigo_indicador) {
-            const [indicator] = await db.query('SELECT id FROM usuarios WHERE codigo_afiliado_proprio = ?', [codigo_indicador]);
+        if (affiliateCode) {
+            const [indicator] = await db.query('SELECT id, email FROM usuarios WHERE codigo_afiliado_proprio = ?', [affiliateCode]);
             if (indicator.length > 0) {
+                if (indicator[0].email === email) {
+                    return res.status(400).json({ message: 'Você não pode usar seu próprio código de afiliado.' });
+                }
                 id_afiliado_indicador = indicator[0].id;
             } else {
-                console.warn(`Código de afiliado indicador "${codigo_indicador}" não encontrado.`);
+                console.warn(`Código de afiliado indicador "${affiliateCode}" não encontrado.`);
                 // Opcional: poderia retornar um erro aqui se o código for inválido
             }
         }
@@ -58,7 +61,7 @@ export const registerUser = async (req, res) => {
         const senha_hash = await bcrypt.hash(senha, salt);
 
         // Gera um código de afiliado único
-        const codigo_afiliado_proprio = `afiliado_${new Date().getTime()}`;
+        const codigo_afiliado_proprio = `${new Date().getTime()}${Math.floor(Math.random() * 1000)}`;
 
         const id_permissao = req.body.id_permissao || 6; // Padrão para 'afiliado' se não for fornecido
         const id_status_padrao = 3;    // 'Pendente'
@@ -202,10 +205,23 @@ export const preRegisterUser = async (req, res) => {
             return res.status(409).json({ message: 'Email ou CPF já está em uso.' });
         }
 
+        let id_afiliado_indicador = null;
+        if (affiliateCode) {
+            const [indicator] = await db.query('SELECT id, email FROM usuarios WHERE codigo_afiliado_proprio = ?', [affiliateCode]);
+            if (indicator.length > 0) {
+                if (indicator[0].email === email) {
+                    return res.status(400).json({ message: 'Você não pode usar seu próprio código de afiliado.' });
+                }
+                id_afiliado_indicador = indicator[0].id;
+            } else {
+                console.warn(`Código de afiliado indicador "${affiliateCode}" não encontrado.`);
+            }
+        }
+
         const salt = await bcrypt.genSalt(10);
         const senha_hash = await bcrypt.hash(password, salt);
 
-        const codigo_afiliado_proprio = `afiliado_${Date.now()}`;
+        const codigo_afiliado_proprio = `${new Date().getTime()}${Math.floor(Math.random() * 1000)}`;
         const id_status_padrao = 3; // 'Pendente' até pagar
         const id_permissao = 6; // afiliado padrão
 
@@ -216,7 +232,7 @@ export const preRegisterUser = async (req, res) => {
         `;
         const values = [
             firstName, lastName, email, senha_hash, cpf, phone, birthDate,
-            codigo_afiliado_proprio, affiliateCode || null, id_permissao, id_status_padrao
+            codigo_afiliado_proprio, id_afiliado_indicador, id_permissao, id_status_padrao
         ];
 
         const [result] = await db.query(sql, values);
@@ -245,12 +261,15 @@ export const getUserProfile = async (req, res) => {
                 u.cep, u.cidade, u.estado, u.biografia, u.profissao, u.escolaridade,
                 u.foto_perfil_url,
                 u.codigo_afiliado_proprio,
+                u.id_afiliado_indicador,
+                indicador.nome as nome_indicador,
                 p.id AS id_permissao,
                 p.nome AS permissao,
                 s.nome AS status
             FROM usuarios u
             JOIN status_usuarios s ON u.id_status = s.id
             JOIN permissoes p ON u.id_permissao = p.id
+            LEFT JOIN usuarios indicador ON u.id_afiliado_indicador = indicador.id
             WHERE u.id = ?
         `;
         
@@ -616,5 +635,20 @@ export const syncUserStatusFromStripe = async (req, res) => {
     } catch (error) {
         console.error('Erro ao sincronizar status do Stripe:', error);
         res.status(500).json({ message: 'Erro interno no servidor ao comunicar com o Stripe.', error: error.message });
+    }
+};
+
+export const getReferredUsers = async (req, res) => {
+    const userId = req.user.id;
+
+    try {
+        const [users] = await db.query(
+            'SELECT id, nome, email, data_criacao FROM usuarios WHERE id_afiliado_indicador = ?',
+            [userId]
+        );
+        res.json(users);
+    } catch (error) {
+        console.error('Erro ao buscar usuários indicados:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.' });
     }
 };

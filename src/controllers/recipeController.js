@@ -357,6 +357,54 @@ export const deleteRecipe = async (req, res) => {
     }
 };
 
+export const deleteRecipeImage = async (req, res) => {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const { id } = req.params;
+        const id_usuario_criador = req.user.id;
+
+        const [recipe] = await connection.query('SELECT id_midia_principal FROM receitas WHERE id = ? AND id_usuario_criador = ?', [id, id_usuario_criador]);
+
+        if (recipe.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Receita não encontrada ou você não tem permissão para esta ação.' });
+        }
+
+        const { id_midia_principal } = recipe[0];
+
+        if (id_midia_principal) {
+            const [media] = await connection.query('SELECT url_arquivo FROM midia WHERE id = ?', [id_midia_principal]);
+
+            if (media.length > 0 && media[0].url_arquivo) {
+                const filePath = path.join(process.cwd(), media[0].url_arquivo);
+                if (fs.existsSync(filePath)) {
+                    fs.unlink(filePath, (err) => {
+                        if (err) {
+                            // Log the error but don't block the process
+                            console.error('Erro ao deletar o arquivo de imagem:', err);
+                        }
+                    });
+                }
+            }
+
+            await connection.query('UPDATE receitas SET id_midia_principal = NULL WHERE id = ?', [id]);
+            await connection.query('DELETE FROM midia WHERE id = ?', [id_midia_principal]);
+        }
+
+        await connection.commit();
+        res.status(200).json({ message: 'Imagem da receita deletada com sucesso.' });
+
+    } catch (error) {
+        await connection.rollback();
+        console.error('Erro ao deletar a imagem da receita:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
 // GET /api/recipes
 export const getAllRecipes = async (req, res) => {
     const connection = await db.getConnection();

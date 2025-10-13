@@ -6,6 +6,7 @@ import {
   getAllRecipes,
   updateRecipe,
   deleteRecipe,
+  deleteRecipeImage,
   deactivateRecipe,
   activateRecipe,
   getUsedCategories,
@@ -65,6 +66,9 @@ router.route('/recipes/:id')
   .get(getRecipeById)
   .put(authMiddleware, upload.single('imagem'), updateRecipe)
   .delete(authMiddleware, deleteRecipe);
+
+// Rota para deletar a imagem de uma receita
+router.delete('/recipes/:id/image', authMiddleware, deleteRecipeImage);
 
 // Rotas para listar receitas associadas a outras entidades
 router.get('/users/:userId/recipes', getAllRecipes);

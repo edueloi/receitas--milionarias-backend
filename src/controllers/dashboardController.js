@@ -115,9 +115,7 @@ export const getDashboardData = async (req, res) => {
             // Fetch transfers and balance if the user is an affiliate (has a stripe_account_id)
             if (stripe_account_id) {
                 transfersData = await stripe.transfers.list({ destination: stripe_account_id, limit: 100 });
-                // Note: To retrieve balance for a connected account, you must make the API call authenticated as that account.
-                // This requires a more complex setup. For now, we'll retrieve the main account balance.
-                // affiliateBalance = await stripe.balance.retrieve({ stripeAccount: stripe_account_id });
+                affiliateBalance = await stripe.balance.retrieve({ stripeAccount: stripe_account_id });
             }
 
             let totalBruto = 0, totalTarifa = 0, totalLiquido = 0;
@@ -138,12 +136,14 @@ export const getDashboardData = async (req, res) => {
                 status: c.status,
             })).sort((a, b) => b.created - a.created);
 
+            const availableBrl = affiliateBalance.available.find(b => b.currency === "brl")?.amount ?? 0;
+            const pendingBrl = affiliateBalance.pending.find(b => b.currency === "brl")?.amount ?? 0;
+
 
             res.json({
                 period: range,
                 total: { bruto: totalBruto, tarifa: totalTarifa, liquido: totalLiquido },
-                // TODO: Implementar a busca de balanço para conta conectada
-                balance: {},
+                balance: { availableBrl, pendingBrl },
                 counts: {
                     totalAssinaturasAtivas: customerData.subscriptions ? customerData.subscriptions.total_count : 0,
                 },
