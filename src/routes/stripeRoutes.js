@@ -1,107 +1,31 @@
-// src/routes/stripeRoutes.js
 import express from "express";
-import {
-  createAffiliateAccount,
-  createCheckoutSession,
-} from "../controllers/stripeController.js";
+import path from "path";
+import { fileURLToPath } from "url";
+import { getStripeDashboardData, login, logout, isAuthenticated } from "../controllers/stripeDashboardController.js";
 
 const router = express.Router();
 
-/**
- * @swagger
- * tags:
- *   name: Pagamentos
- *   description: Endpoints para integração de pagamentos com Stripe.
- */
+// Define __dirname para Módulos ES da forma correta
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-/**
- * @swagger
- * /create-affiliate-account:
- *   post:
- *     summary: Cria uma nova conta de afiliado no Stripe
- *     tags: [Pagamentos]
- *     description: Cria uma Conta Conectada Express no Stripe para um usuário se tornar um afiliado e receber transferências.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               userEmail:
- *                 type: string
- *                 description: O email do usuário que está se tornando um afiliado.
- *                 example: "afiliado@example.com"
- *               userId:
- *                 type: string
- *                 description: O ID do usuário no seu sistema.
- *                 example: "user_12345"
- *             required:
- *               - userEmail
- *               - userId
- *     responses:
- *       '200':
- *         description: URL de onboarding do Stripe gerada com sucesso.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 url:
- *                   type: string
- *                   format: url
- *                   description: A URL para onde o usuário deve ser redirecionado para completar o cadastro no Stripe.
- *       '500':
- *         description: Erro interno no servidor.
- */
-router.post("/create-affiliate-account", createAffiliateAccount);
+// Rota para servir o arquivo HTML de login
+router.get("/login", (req, res) => {
+  res.sendFile(path.resolve(__dirname, "..", "views", "login.html"));
+});
 
-/**
- * @swagger
- * /create-checkout-session:
- *   post:
- *     summary: Cria uma sessão de checkout no Stripe para uma assinatura
- *     tags: [Pagamentos]
- *     description: Cria uma sessão de pagamento no Stripe para um cliente final assinar um plano.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               email:
- *                 type: string
- *                 description: O email do cliente final.
- *                 example: "cliente@example.com"
- *               firstName:
- *                 type: string
- *                 description: O primeiro nome do cliente.
- *                 example: "João"
- *               lastName:
- *                 type: string
- *                 description: O sobrenome do cliente.
- *                 example: "Silva"
- *               affiliateId:
- *                 type: string
- *                 description: (Opcional) O ID do afiliado que indicou esta compra.
- *                 example: "afiliado_abc"
- *             required:
- *               - email
- *     responses:
- *       '200':
- *         description: ID da sessão de checkout do Stripe.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: string
- *                   description: O ID da sessão de checkout criada.
- *       '500':
- *         description: Erro interno no servidor.
- */
-router.post("/create-checkout-session", createCheckoutSession);
+// Rota para processar o login
+router.post("/login", login);
+
+// Rota de logout
+router.get("/logout", logout);
+
+// Rota para servir o arquivo HTML do dashboard (protegida)
+router.get("/stripe-dashboard", isAuthenticated, (req, res) => {
+  res.sendFile(path.resolve(__dirname, "..", "views", "stripe-dashboard.html"));
+});
+
+// Rota para fornecer os dados do dashboard (protegida)
+router.get("/stripe-dashboard-data", isAuthenticated, getStripeDashboardData);
 
 export default router;

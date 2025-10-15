@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel Financeiro - Receitas Milionárias</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <link rel="stylesheet" href="/css/dashboard.css" />
+  <script defer src="/js/dashboard.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Painel Financeiro</h1>
+    <p>Visão completa de assinaturas, pagamentos e afiliados.</p>
+
+    <div class="filters-bar">
+      <select id="rangeSelect" class="filter">
+        <option value="7d" selected>Últimos 7 dias</option>
+        <option value="30d">Últimos 30 dias</option>
+        <option value="all">Desde o início</option>
+      </select>
+
+      <select id="userSelect" class="filter">
+        <option value="admin">👑 Visão de Admin</option>
+        </select>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section id="user-summary-section" class="hidden"></section>
+
+    <section id="admin-overview-section">
+      <div class="cards">
+        <div class="card bruto"><h3><i class="fa-solid fa-sack-dollar"></i> Receita Bruta</h3><p id="totalBruto">R$ 0,00</p></div>
+        <div class="card"><h3><i class="fa-solid fa-tags"></i> Taxas Stripe</h3><p id="totalTarifa">R$ 0,00</p></div>
+        <div class="card liquido"><h3><i class="fa-solid fa-wallet"></i> Receita Líquida</h3><p id="totalLiquido">R$ 0,00</p></div>
+        <div class="card"><h3><i class="fa-solid fa-handshake-angle"></i> Repasses Afiliados</h3><p id="totalTransferencias">R$ 0,00</p></div>
+        <div class="card saldo"><h3><i class="fa-solid fa-piggy-bank"></i> Saldo Disponível</h3><p id="saldoDisponivel">R$ 0,00</p></div>
+        <div class="card"><h3><i class="fa-solid fa-hourglass-half"></i> Saldo Pendente</h3><p id="saldoPendente">R$ 0,00</p></div>
+        <div class="card clientes"><h3><i class="fa-solid fa-users"></i> Total de Clientes</h3><p id="totalClientes">0</p></div>
+        <div class="card"><h3><i class="fa-solid fa-star"></i> Assinaturas Ativas</h3><p id="totalAssinaturas">0</p></div>
+      </div>
+    </section>
+
+    <div class="tables">
+      <section class="table-container" id="affiliates-table-section">
+        <h2><i class="fa-solid fa-network-wired"></i> Afiliados e Indicados</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Afiliado (ID)</th>
+              <th>Ganhos Totais</th>
+              <th>Clientes Indicados</th>
+            </tr>
+          </thead>
+          <tbody id="affiliatesTable"></tbody>
+        </table>
+      </section>
+
+      <section class="table-container" id="payments-table-section">
+        <h2><i class="fa-solid fa-receipt"></i> Pagamentos Recentes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Valor</th>
+              <th>Data</th>
+              <th>Status</th>
+              <th>Recibo</th>
+            </tr>
+          </thead>
+          <tbody id="pagamentosTable"></tbody>
+        </table>
+      </section>
+
+      <section class="table-container" id="customers-table-section">
+        <h2><i class="fa-solid fa-address-book"></i> Clientes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Email</th>
+              <th>Status da Assinatura</th>
+            </tr>
+          </thead>
+          <tbody id="clientesTable"></tbody>
+        </table>
+      </section>
+
+      <section class="table-container" id="expirations-table-section">
+        <h2><i class="fa-solid fa-calendar-days"></i> Próximos Vencimentos</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Próximo Pagamento</th>
+              <th>ID Assinatura</th>
+            </tr>
+          </thead>
+          <tbody id="vencimentosTable"></tbody>
+        </table>
+      </section>
+
+      <section class="table-container" id="payouts-table-section">
+        <h2><i class="fa-solid fa-money-bill-transfer"></i> Histórico de Repasses (Saques)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID do Repasse</th>
+              <th>Valor</th>
+              <th>Data de Chegada</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="repassesTable"></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

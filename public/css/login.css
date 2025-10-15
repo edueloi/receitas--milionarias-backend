@@ -1,0 +1,112 @@
+/* =========================================================
+   PÁGINA DE LOGIN - PAINEL FINANCEIRO
+   ========================================================= */
+
+:root {
+  --dourado: #C9A635;
+  --verde-escuro: #1C3B32;
+  --branco: #FFFFFF;
+  --cinza: #444444;
+  --cinza-claro: #f8f9fa;
+  --cinza-borda: #e9ecef;
+  --error: #dc3545;
+  --font-title: "Playfair Display", serif;
+  --font-body: "Montserrat", sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background-color: #f0f2f5;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+}
+
+.login-box {
+  background: var(--branco);
+  padding: 3rem 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.login-title {
+  font-family: var(--font-title);
+  color: var(--verde-escuro);
+  font-size: 2.2rem;
+  margin: 0 0 0.5rem;
+}
+
+.login-subtitle {
+  color: #6c757d;
+  margin: 0 0 2.5rem;
+  font-size: 1rem;
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.input-group i {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #adb5bd;
+  transition: color 0.3s ease;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 14px 14px 14px 50px;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  font-size: 1rem;
+  font-family: var(--font-body);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--dourado);
+  box-shadow: 0 0 0 3px rgba(201, 166, 53, 0.2);
+}
+
+.input-group input:focus + i {
+  color: var(--dourado);
+}
+
+.login-button {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(195deg, var(--verde-escuro), var(--dourado));
+  color: var(--branco);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  margin-top: 1rem;
+}
+
+.login-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+}
+
+.error-message {
+  color: var(--error);
+  margin-top: 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  height: 20px; /* Para não empurrar o layout */
+}

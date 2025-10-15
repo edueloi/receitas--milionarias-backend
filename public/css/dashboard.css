@@ -1,0 +1,272 @@
+/* =========================================================
+   PAINEL FINANCEIRO - ESTILO PREMIUM "RECEITAS MILIONÁRIAS"
+   ========================================================= */
+
+:root {
+  --dourado: #C9A635;
+  --verde-escuro: #1C3B32;
+  --branco: #FFFFFF;
+  --cinza-escuro: #444444;
+  --background: #f0f2f5;
+  --card-bg: var(--branco);
+  --text-main: #344767;
+  --text-muted: #6c757d;
+  --border-color: #e9ecef;
+  --success: #28a745;
+  --warning: #ffc107;
+  --error: #dc3545;
+  --gray: #6c757d;
+  --font-title: "Playfair Display", serif;
+  --font-body: "Montserrat", sans-serif;
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --border-radius: 0.75rem;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background-color: var(--background);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+header {
+  /* Removido o linear-gradient, agora cor sólida */
+  background-color: var(--verde-escuro); 
+  color: var(--branco);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  border-radius: var(--border-radius);
+  margin: 1rem;
+  box-shadow: var(--shadow-md);
+  position: relative;
+  z-index: 10;
+}
+
+header h1 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 2.5rem;
+}
+
+header p {
+  margin: 0.5rem 0 1.5rem;
+  opacity: 0.9;
+}
+
+.filters-bar {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.filter {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 10px 40px 10px 20px;
+  border-radius: 50px;
+  /* Borda sutil para dar um relevo, mas ainda discreta */
+  border: 1px solid rgba(255, 255, 255, 0.2); 
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  background-color: var(--verde-escuro); /* Fundo sólido verde escuro */
+  color: var(--branco);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  /* Ícone da seta em SVG, cor branca */
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 15px center;
+  background-size: 1em;
+}
+
+.filter:hover {
+  background-color: var(--dourado); /* Dourado no hover para destaque */
+  border-color: var(--dourado); /* Borda também dourada */
+  color: var(--verde-escuro); /* Texto para verde escuro no hover */
+  /* Nova seta para o hover */
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231C3B32' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+}
+
+/* Estilo para as opções dentro do dropdown (importante para consistência) */
+select.filter option {
+    background-color: var(--verde-escuro); /* Fundo verde escuro */
+    color: var(--branco); /* Texto branco */
+    padding: 10px;
+}
+
+select.filter option:hover,
+select.filter option:checked {
+    background-color: var(--dourado); /* Fundo dourado no hover/selecionado */
+    color: var(--verde-escuro); /* Texto verde escuro */
+}
+
+
+main.dashboard {
+  padding: 1.5rem;
+  margin-top: -50px;
+  padding-top: 50px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border-left: 4px solid transparent;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-md);
+}
+
+.card.liquido, .card.saldo { border-left-color: var(--dourado); }
+.card.bruto, .card.clientes { border-left-color: var(--verde-escuro); }
+
+.card h3 {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card h3 .fa-solid { color: var(--dourado); }
+
+.card p {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.table-container {
+  background-color: var(--white);
+  padding: 1.5rem;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+  margin-top: 2rem;
+  overflow-x: auto;
+}
+
+.table-container h2 {
+  font-family: var(--font-title);
+  color: var(--verde-escuro);
+  font-size: 1.8rem;
+  margin: 0 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.table-container h2 .fa-solid {
+    font-size: 1.5rem;
+    color: var(--dourado);
+}
+
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  padding: 1rem;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--border-color);
+}
+td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background-color: #fdfaf2; }
+
+td small, .mini {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: block;
+}
+td a { color: var(--dourado); text-decoration: none; font-weight: 600; }
+td a:hover { text-decoration: underline; }
+
+td ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+td ul li {
+    padding: 0.25rem 0;
+    font-size: 0.85rem;
+}
+
+.status {
+  padding: 5px 12px;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  display: inline-block;
+}
+.status-succeeded, .status-ativo, .status-paid { background-color: #e9f5e9; color: var(--success); }
+.status-pagamento-pendente { background-color: #fff8e1; color: var(--warning); }
+.status-inativo, .status-cancelado { background-color: #f1f3f5; color: var(--gray); }
+
+.user-resumo {
+  background: var(--white);
+  border-left: 5px solid var(--dourado);
+  padding: 2rem;
+  border-radius: var(--border-radius);
+  margin-bottom: 2rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.user-resumo h2 {
+  font-family: var(--font-title);
+  color: var(--verde-escuro);
+  margin: 0 0 1.5rem;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-resumo .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.user-resumo .info-item .label {
+    font-weight: 600;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+.user-resumo .info-item .value {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.hidden { display: none !important; }
