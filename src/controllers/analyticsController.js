@@ -108,7 +108,90 @@ export const getAffiliateStats = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erro ao buscar estatísticas do afiliado:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    }
+};
+
+/**
+ * Retorna estatísticas globais para o painel de relatórios.
+ */
+export const getGlobalStats = async (req, res) => {
+    try {
+        // Contagens gerais
+        const [[{ total_tags }]] = await db.query('SELECT COUNT(*) as total_tags FROM tags');
+        const [[{ total_receitas }]] = await db.query('SELECT COUNT(*) as total_receitas FROM receitas');
+        const [[{ total_categorias }]] = await db.query('SELECT COUNT(*) as total_categorias FROM categorias_receitas');
+        const [[{ total_admins }]] = await db.query(`
+            SELECT COUNT(*) as total_admins 
+            FROM usuarios u
+            JOIN permissoes p ON u.id_permissao = p.id
+            WHERE p.nome = 'admin'
+        `);
+
+        // Receitas por categoria
+        const [receitas_por_categoria] = await db.query(`
+            SELECT cr.nome, COUNT(r.id) as quantidade
+            FROM receitas r
+            JOIN categorias_receitas cr ON r.id_categoria = cr.id
+            GROUP BY cr.nome
+            ORDER BY quantidade DESC
+        `);
+
+        // Receitas por tag
+        const [receitas_por_tag] = await db.query(`
+            SELECT t.nome, COUNT(rt.id_receita) as quantidade
+            FROM receita_tags rt
+            JOIN tags t ON rt.id_tag = t.id
+            GROUP BY t.nome
+            ORDER BY quantidade DESC
+        `);
+
+        // Estatísticas de afiliados
+        const [[{ total_afiliados }]] = await db.query(`
+            SELECT COUNT(*) as total_afiliados
+            FROM usuarios u
+            JOIN permissoes p ON u.id_permissao = p.id
+            WHERE p.nome LIKE '%afiliado%'
+        `);
+        const [[{ afiliados_pagantes }]] = await db.query(`
+            SELECT COUNT(*) as afiliados_pagantes
+            FROM usuarios u
+            JOIN permissoes p ON u.id_permissao = p.id
+            WHERE p.nome LIKE '%afiliado%' AND u.isPaying = 1
+        `);
+        
+        const [afiliados_status] = await db.query(`
+            SELECT su.nome, COUNT(u.id) as quantidade
+            FROM usuarios u
+            JOIN permissoes p ON u.id_permissao = p.id
+            JOIN status_usuarios su ON u.id_status = su.id
+            WHERE p.nome LIKE '%afiliado%'
+            GROUP BY su.nome
+        `);
+
+        const [afiliados_niveis] = await db.query(`
+            SELECT p.nome, COUNT(u.id) as quantidade
+            FROM usuarios u
+            JOIN permissoes p ON u.id_permissao = p.id
+            WHERE p.nome LIKE '%afiliado%'
+            GROUP BY p.nome
+        `);
+
+        res.json({
+            total_tags,
+            total_receitas,
+            total_categorias,
+            total_admins,
+            receitas_por_categoria,
+            receitas_por_tag,
+            total_afiliados,
+            afiliados_pagantes,
+            afiliados_status,
+            afiliados_niveis
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar estatísticas globais:', error);
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
     }
 };

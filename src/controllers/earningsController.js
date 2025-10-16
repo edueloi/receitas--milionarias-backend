@@ -79,3 +79,28 @@ export const getEarningsHistory = async (req, res) => {
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
     }
 };
+
+export const getMonthlyEarnings = async (req, res) => {
+    const id_usuario = req.user.id;
+
+    try {
+        const sql = `
+            SELECT
+                DATE_FORMAT(data_referencia, '%Y-%m') as mes,
+                SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END) as disponivel,
+                SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END) as pendente
+            FROM ganhos_afiliados
+            WHERE id_usuario = ?
+            GROUP BY mes
+            ORDER BY mes DESC
+            LIMIT 12;
+        `;
+        const [monthlyEarnings] = await db.query(sql, [id_usuario]);
+
+        res.json(monthlyEarnings);
+
+    } catch (error) {
+        console.error('Erro ao consultar ganhos mensais:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    }
+};

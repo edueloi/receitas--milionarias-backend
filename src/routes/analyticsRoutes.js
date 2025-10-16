@@ -3,8 +3,10 @@ import express from 'express';
 import {
     createShareLink,
     trackVisit,
-    getAffiliateStats
+    getAffiliateStats,
+    getGlobalStats
 } from '../controllers/analyticsController.js';
+import { getStripeDashboardData } from "../controllers/stripeDashboardController.js";
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -15,6 +17,8 @@ const router = express.Router();
  *   name: Analytics e Afiliados
  *   description: Endpoints para rastreamento de visitas e performance de afiliados
  */
+
+router.get("/stripe-dashboard-data", authMiddleware, getStripeDashboardData);
 
 /**
  * @swagger
@@ -72,5 +76,17 @@ router.post('/track-visit', trackVisit); // Pode ser com ou sem auth, dependendo
  *       200: { description: 'Estatísticas do afiliado' }
  */
 router.get('/affiliates/:affiliateId/stats', authMiddleware, getAffiliateStats);
+
+/**
+ * @swagger
+ * /stats/global:
+ *   get:
+ *     summary: (Admin) Obtém estatísticas globais para o dashboard
+ *     tags: [Analytics e Afiliados]
+ *     security: [ { bearerAuth: [] } ]
+ *     responses:
+ *       200: { description: 'Estatísticas globais' }
+ */
+router.get('/stats/global', authMiddleware, getGlobalStats);
 
 export default router;

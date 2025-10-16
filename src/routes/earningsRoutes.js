@@ -2,7 +2,8 @@
 import express from 'express';
 import {
     addEarning,
-    getEarningsHistory
+    getEarningsHistory,
+    getMonthlyEarnings
 } from '../controllers/earningsController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
@@ -54,8 +55,15 @@ const router = express.Router();
  *     responses:
  *       200: { description: 'Histórico de ganhos e totais' }
  */
-router.route('/earnings')
+router.route('/')
     .post(authMiddleware, addEarning) // Proteger com chave de API em produção
     .get(authMiddleware, getEarningsHistory);
+
+router.route('/monthly')
+    .get(authMiddleware, getMonthlyEarnings);
+
+router.get('/test', (req, res) => {
+  res.json({ message: 'Earnings test route is working!' });
+});
 
 export default router;
