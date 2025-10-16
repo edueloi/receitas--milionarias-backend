@@ -1,6 +1,7 @@
 // src/routes/walletRoutes.js
 import express from 'express';
-import { getBalance } from '../controllers/walletController.js';
+import { getBalance, getUserBalances } from '../controllers/walletController.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -34,6 +35,35 @@ const router = express.Router();
  *         description: "Saldo"
  */
 router.get('/balance', getBalance);
+
+/**
+ * @swagger
+ * /wallet/me/balances:
+ *   get:
+ *     summary: Consulta os saldos do usuário logado
+ *     tags: [Carteira]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Saldos do usuário
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 saldo_disponivel:
+ *                   type: number
+ *                   format: float
+ *                 saldo_pendente:
+ *                   type: number
+ *                   format: float
+ *       401:
+ *         description: Não autorizado
+ *       404:
+ *         description: Usuário não encontrado
+ */
+router.get('/me/balances', authMiddleware, getUserBalances);
 
 router.get('/test', (_req, res) => {
   res.json({ message: 'Wallet test route is working!' });

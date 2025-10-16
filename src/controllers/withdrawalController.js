@@ -1,110 +1,91 @@
+// src/controllers/withdrawalController.js
 import db from '../config/db.js';
 
-// Solicita saque do saldo disponível
+/**
+ * (User) Solicita um saque do seu saldo disponível.
+ */
 export const requestWithdrawal = async (req, res) => {
-  const affiliateId = req.user?.id;
-  const { amount, pixKey, bankDetails } = req.body;
+  const userId = req.user.id;
+  const { amount } = req.body;
 
-  if (!affiliateId) return res.status(401).json({ error: 'Não autenticado.' });
-
-  if (!amount || Number(amount) <= 0) {
-    return res.status(400).json({ error: 'Valor de saque inválido.' });
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    return res.status(400).json({ message: 'O valor do saque deve ser um número positivo.' });
   }
 
   const parsedAmount = parseFloat(amount);
-  if (Number.isNaN(parsedAmount)) {
-    return res.status(400).json({ error: 'O valor do saque deve ser um número.' });
-  }
-
-  if (!pixKey && !bankDetails) {
-    return res.status(400).json({ error: 'Informe uma chave Pix ou dados bancários.' });
-  }
-
-  const connection = await db.getConnection();
-  await connection.beginTransaction();
+  let connection;
 
   try {
-    // Verifica saldo disponível
-    const [results] = await connection.query(
-      `SELECT COALESCE(SUM(valor), 0) AS saldo_disponivel 
-         FROM comissoes 
-        WHERE id_afiliado = ? AND status = 'disponivel'`,
-      [affiliateId]
-    );
-    const availableBalance = parseFloat(results[0].saldo_disponivel || 0);
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    if (parsedAmount > availableBalance) {
-      await connection.rollback();
-      return res.status(400).json({ error: 'Saldo insuficiente para o saque.' });
-    }
-
-    // Seleciona comissões a abater (trava linhas para evitar corrida)
-    const [commissionsToPay] = await connection.query(
-      `SELECT id, valor 
-         FROM comissoes 
-        WHERE id_afiliado = ? AND status = 'disponivel'
-        ORDER BY id ASC
-        FOR UPDATE`,
-      [affiliateId]
+    // 1. Buscar usuário, saldo e chave pix (com lock para a transação)
+    const [userRows] = await connection.query(
+      'SELECT saldo_disponivel, chave_pix FROM usuarios WHERE id = ? FOR UPDATE',
+      [userId]
     );
 
-    let accumulated = 0;
-    const idsToUpdate = [];
-
-    for (const c of commissionsToPay) {
-      if (accumulated < parsedAmount) {
-        accumulated += parseFloat(c.valor);
-        idsToUpdate.push(c.id);
-      } else {
-        break;
-      }
-    }
-
-    if (accumulated < parsedAmount) {
+    if (userRows.length === 0) {
       await connection.rollback();
-      return res.status(400).json({ error: 'Não foi possível alocar o saldo. Tente um valor menor.' });
+      return res.status(404).json({ message: 'Usuário não encontrado.' });
     }
 
-    // Cria o saque
+    const user = userRows[0];
+
+    // 2. Verificar se tem chave PIX
+    if (!user.chave_pix) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Você precisa cadastrar uma chave PIX no seu perfil antes de solicitar um saque.' });
+    }
+
+    // 3. Verificar se o saldo é suficiente
+    if (user.saldo_disponivel < parsedAmount) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Saldo disponível insuficiente.' });
+    }
+
+    // 4. Debitar o saldo do usuário
+    await connection.query(
+      'UPDATE usuarios SET saldo_disponivel = saldo_disponivel - ? WHERE id = ?',
+      [parsedAmount, userId]
+    );
+
+    // 5. Inserir o registro de saque
     const [withdrawalResult] = await connection.query(
-      `INSERT INTO saques (id_afiliado, valor, status, chave_pix, dados_bancarios) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [affiliateId, parsedAmount, 'solicitado', pixKey || null, bankDetails ? JSON.stringify(bankDetails) : null]
+      'INSERT INTO saques (id_usuario, valor, status, chave_pix_usada) VALUES (?, ?, ?, ?)',
+      [userId, parsedAmount, 'pendente', user.chave_pix]
     );
-    const withdrawalId = withdrawalResult.insertId;
-
-    // Marca comissões usadas como pagas e vincula ao saque
-    if (idsToUpdate.length > 0) {
-      await connection.query(
-        `UPDATE comissoes SET status = 'paga', id_saque = ? WHERE id IN (?)`,
-        [withdrawalId, idsToUpdate]
-      );
-    }
 
     await connection.commit();
-    return res.status(201).json({ message: 'Solicitação de saque recebida com sucesso!', withdrawalId });
+
+    res.status(201).json({
+      message: 'Solicitação de saque enviada com sucesso!',
+      withdrawalId: withdrawalResult.insertId
+    });
+
   } catch (error) {
-    await connection.rollback();
+    if (connection) await connection.rollback();
     console.error('Erro ao solicitar saque:', error);
-    return res.status(500).json({ error: 'Erro interno ao processar a solicitação.' });
+    res.status(500).json({ message: 'Erro interno do servidor ao processar a solicitação.' });
   } finally {
-    try { await connection.release(); } catch {}
+    if (connection) connection.release();
   }
 };
 
-// Lista saques do afiliado
+/**
+ * (User) Lista os saques do usuário logado.
+ */
 export const getWithdrawals = async (req, res) => {
-  const affiliateId = req.user?.id;
-  if (!affiliateId) return res.status(401).json({ error: 'Não autenticado.' });
+  const userId = req.user.id;
 
   try {
     const [withdrawals] = await db.query(
-      'SELECT * FROM saques WHERE id_afiliado = ? ORDER BY data_solicitacao DESC',
-      [affiliateId]
+      'SELECT id, valor, status, data_solicitacao, data_atualizacao FROM saques WHERE id_usuario = ? ORDER BY data_solicitacao DESC',
+      [userId]
     );
-    return res.json(withdrawals);
+    res.json(withdrawals);
   } catch (error) {
-    console.error('Erro ao buscar saques:', error);
-    return res.status(500).json({ error: 'Erro interno ao buscar dados.' });
+    console.error('Erro ao buscar histórico de saques:', error);
+    res.status(500).json({ message: 'Erro interno ao buscar histórico de saques.' });
   }
 };

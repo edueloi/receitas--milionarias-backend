@@ -14,7 +14,8 @@ import {
     preRegisterUser,
     updateUser,
     syncUserStatusFromStripe,
-    getReferredUsers
+    getReferredUsers,
+    updatePixKey
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
@@ -204,6 +205,34 @@ router.put('/users/me', authMiddleware, upload.single('foto_perfil'), updateUser
  *         description: Senha antiga incorreta
  */
 router.patch('/users/me/password', authMiddleware, updatePassword);
+
+/**
+ * @swagger
+ * /users/me/pix:
+ *   patch:
+ *     summary: Atualiza a chave PIX do usuário logado
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - chave_pix
+ *             properties:
+ *               chave_pix: { type: string, example: '000.000.000-00' }
+ *     responses:
+ *       200:
+ *         description: Chave PIX atualizada com sucesso
+ *       400:
+ *         description: O campo chave_pix é obrigatório
+ *       401:
+ *         description: Não autorizado
+ */
+router.patch('/users/me/pix', authMiddleware, updatePixKey);
 
 /**
  * @swagger

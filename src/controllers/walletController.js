@@ -72,3 +72,33 @@ export const getBalance = async (req, res) => {
     res.status(500).json({ message: 'Erro interno no servidor ao buscar saldo.', error: error.message });
   }
 };
+
+/**
+ * GET /wallet/me/balances
+ * Retorna os saldos (disponível e pendente) do usuário logado.
+ * Requer autenticação.
+ */
+export const getUserBalances = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const [rows] = await db.query(
+      'SELECT saldo_disponivel, saldo_pendente FROM usuarios WHERE id = ?',
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Usuário não encontrado.' });
+    }
+
+    const balances = {
+      saldo_disponivel: rows[0].saldo_disponivel || 0,
+      saldo_pendente: rows[0].saldo_pendente || 0,
+    };
+
+    res.json(balances);
+  } catch (error) {
+    console.error('Erro ao buscar saldos do usuário:', error);
+    res.status(500).json({ message: 'Erro interno do servidor ao buscar saldos.' });
+  }
+};

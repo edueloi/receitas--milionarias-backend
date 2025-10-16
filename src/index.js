@@ -30,6 +30,7 @@ import withdrawalRoutes from './routes/withdrawalRoutes.js';
 import stripeRoutes from './routes/stripeRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
 import payoutRoutes from './routes/payoutRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 // __dirname para ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -99,6 +100,7 @@ app.use(withdrawalRoutes);
 app.use(stripeRoutes); // NÃO deve declarar /dashboard aqui
 app.use('/wallet', walletRoutes);
 app.use('/payouts', payoutRoutes);
+app.use(adminRoutes);
 console.log('Rotas da API registradas.');
 
 // -------------------- Docs --------------------

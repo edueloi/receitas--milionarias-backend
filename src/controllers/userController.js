@@ -355,6 +355,32 @@ export const updateUserProfile = async (req, res) => {
     }
 };
 
+// PATCH /api/users/me/pix (Atualiza a chave PIX do usuário logado)
+export const updatePixKey = async (req, res) => {
+  const userId = req.user.id;
+  const { chave_pix } = req.body;
+
+  if (!chave_pix) {
+    return res.status(400).json({ message: 'O campo chave_pix é obrigatório.' });
+  }
+
+  try {
+    const [result] = await db.query(
+      'UPDATE usuarios SET chave_pix = ? WHERE id = ?',
+      [chave_pix, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Usuário não encontrado.' });
+    }
+
+    res.status(200).json({ message: 'Chave PIX atualizada com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao atualizar a chave PIX:', error);
+    res.status(500).json({ message: 'Erro interno do servidor ao atualizar a chave PIX.' });
+  }
+};
+
 // PATCH /api/users/me/password (Muda a senha do próprio usuário logado)
 export const updatePassword = async (req, res) => {
     const userId = req.user.id;
