@@ -44,7 +44,11 @@ export const registerUser = async (req, res) => {
         // --- Lógica para encontrar o ID do indicador a partir do código ---
         let id_afiliado_indicador = null;
         if (affiliateCode) {
-            const [indicator] = await db.query('SELECT id, email FROM usuarios WHERE codigo_afiliado_proprio = ?', [affiliateCode]);
+            let processed_affiliateCode = affiliateCode;
+            if (affiliateCode.startsWith('afiliado_')) {
+                processed_affiliateCode = affiliateCode.replace('afiliado_', '');
+            }
+            const [indicator] = await db.query('SELECT id, email FROM usuarios WHERE codigo_afiliado_proprio = ?', [processed_affiliateCode]);
             if (indicator.length > 0) {
                 if (indicator[0].email === email) {
                     return res.status(400).json({ message: 'Você não pode usar seu próprio código de afiliado.' });
@@ -207,7 +211,11 @@ export const preRegisterUser = async (req, res) => {
 
         let id_afiliado_indicador = null;
         if (affiliateCode) {
-            const [indicator] = await db.query('SELECT id, email FROM usuarios WHERE codigo_afiliado_proprio = ?', [affiliateCode]);
+            let processed_affiliateCode = affiliateCode;
+            if (affiliateCode.startsWith('afiliado_')) {
+                processed_affiliateCode = affiliateCode.replace('afiliado_', '');
+            }
+            const [indicator] = await db.query('SELECT id, email FROM usuarios WHERE codigo_afiliado_proprio = ?', [processed_affiliateCode]);
             if (indicator.length > 0) {
                 if (indicator[0].email === email) {
                     return res.status(400).json({ message: 'Você não pode usar seu próprio código de afiliado.' });

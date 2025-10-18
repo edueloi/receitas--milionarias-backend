@@ -59,7 +59,11 @@ export const trackVisit = async (req, res) => {
     try {
         // Se um código de afiliado foi passado, encontre o ID do usuário correspondente
         if (codigo_afiliado) {
-            const [users] = await db.query('SELECT id FROM usuarios WHERE codigo_afiliado_proprio = ?', [codigo_afiliado]);
+            let processed_codigo_afiliado = codigo_afiliado;
+            if (codigo_afiliado.startsWith('afiliado_')) {
+                processed_codigo_afiliado = codigo_afiliado.replace('afiliado_', '');
+            }
+            const [users] = await db.query('SELECT id FROM usuarios WHERE codigo_afiliado_proprio = ?', [processed_codigo_afiliado]);
             if (users.length > 0) {
                 id_afiliado_referencia = users[0].id;
             }
