@@ -3,3 +3,20 @@ node_modules/
 .env.bak
 .env.development
 swaggerConfig.js
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database dumps
+dump.sql
