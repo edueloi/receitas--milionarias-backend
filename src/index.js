@@ -80,6 +80,7 @@ app.get('/test-index', (_req, res) => {
   res.send('Index test route is working!');
 });
 
+app.get('/', (req,res)=>res.json({name:'Receitas API', status:'ok'}));
 // -------------------- APIs --------------------
 console.log('Registrando rotas da API...');
 app.use(userRoutes);
@@ -101,6 +102,7 @@ app.use(stripeRoutes); // NÃO deve declarar /dashboard aqui
 app.use('/wallet', walletRoutes);
 app.use('/payouts', payoutRoutes);
 app.use(adminRoutes);
+
 console.log('Rotas da API registradas.');
 
 // -------------------- Docs --------------------
