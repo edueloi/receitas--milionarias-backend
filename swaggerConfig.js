@@ -14,7 +14,7 @@ const options = {
         description: 'Servidor de Produção',
       },
       {
-        url: `http://localhost:${process.env.PORT || 3000}/api`,
+        url: `https://api.receitasmilionarias.com.br/api`,
         description: 'Servidor de Desenvolvimento',
       },
     ],
@@ -122,7 +122,7 @@ const options = {
               type: 'string',
               format: 'url',
               description: 'URL da imagem principal da receita',
-              example: "http://localhost:3000/uploads/bolo-chocolate.jpg"
+              example: "https://api.receitasmilionarias.com.br/uploads/bolo-chocolate.jpg"
             },
             criador: {
               $ref: '#/components/schemas/UsuarioCriador'
@@ -194,7 +194,7 @@ const options = {
               type: 'string',
               format: 'url',
               nullable: true,
-              example: "http://localhost:3000/uploads/chef-famoso.jpg"
+              example: "https://api.receitasmilionarias.com.br/uploads/chef-famoso.jpg"
             }
           }
         },
@@ -214,7 +214,7 @@ const options = {
               type: 'string',
               format: 'url',
               nullable: true,
-              example: "http://localhost:3000/uploads/categoria-sobremesa.jpg"
+              example: "https://api.receitasmilionarias.com.br/uploads/categoria-sobremesa.jpg"
             }
           }
         },
