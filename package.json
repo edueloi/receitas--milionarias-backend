@@ -29,6 +29,7 @@
     "pdfjs-dist": "^5.4.149",
     "pdfkit": "^0.15.0",
     "pngjs": "^7.0.0",
+    "slugify": "^1.6.6",
     "stripe": "^19.1.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
