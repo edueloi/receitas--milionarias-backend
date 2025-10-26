@@ -32,7 +32,7 @@ import withdrawalRoutes from './routes/withdrawalRoutes.js';
 import stripeRoutes from './routes/stripeRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
 import payoutRoutes from './routes/payoutRoutes.js';
-import adminRoutes from './routes/adminRoutes.js';
+import rolePermissionsRoutes from './routes/rolePermissionsRoutes.js';
 
 // __dirname (ESM)
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +46,12 @@ app.set('trust proxy', true);
 
 // -------------------- Middlewares base --------------------
 app.use(cors());
+
+// DEBUG: Log all incoming requests
+app.use((req, res, next) => {
+  console.log('REQUEST RECEIVED:', req.method, req.originalUrl);
+  next();
+});
 
 // Webhook do Stripe deve vir ANTES do body-parser JSON
 app.post('/stripe-webhook', express.raw({ type: 'application/json' }), handleWebhook);
@@ -85,6 +91,7 @@ app.get('/test-index', (_req, res) => res.send('Index test route is working!'));
 
 // -------------------- APIs --------------------
 console.log('Registrando rotas da API...');
+app.use(rolePermissionsRoutes);
 app.use(userRoutes);
 app.use(courseRoutes);
 app.use(categoryRoutes);
@@ -105,7 +112,6 @@ app.use(withdrawalRoutes);
 app.use(stripeRoutes); // não registre /dashboard aqui
 app.use('/wallet', walletRoutes);
 app.use('/payouts', payoutRoutes);
-app.use(adminRoutes);
 console.log('Rotas da API registradas.');
 
 // -------------------- Docs --------------------
