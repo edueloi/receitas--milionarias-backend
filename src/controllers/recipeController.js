@@ -693,18 +693,19 @@ export const deleteRecipe = async (req, res) => {
         [existingRecipe[0].id_midia_principal]
       );
       if (existingMedia.length > 0 && existingMedia[0].url_arquivo) {
-        fs.unlink(
-          path.join(process.cwd(), existingMedia[0].url_arquivo),
-          (err) => {
-            if (err)
-              console.error("Erro ao deletar arquivo de mídia antigo:", err);
-          }
-        );
+        const mediaPath = path.join(process.cwd(), existingMedia[0].url_arquivo);
+        if (fs.existsSync(mediaPath)) {
+            fs.unlink(mediaPath, (err) => {
+                if (err) console.error("Erro ao deletar arquivo de mídia:", err);
+            });
+        }
       }
       await connection.query("DELETE FROM midia WHERE id = ?", [
         existingRecipe[0].id_midia_principal,
       ]);
     }
+
+    await connection.query("DELETE FROM comentarios_avaliacoes WHERE id_receita = ?", [id]);
 
     await connection.query(
       "DELETE FROM grupos_ingredientes WHERE id_receita = ?",

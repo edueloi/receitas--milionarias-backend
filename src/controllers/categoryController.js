@@ -1,4 +1,6 @@
 import db from '../config/db.js';
+import fs from 'fs';
+import path from 'path';
 
 // Middleware de verificação de admin (a ser criado/usado no futuro)
 const isAdmin = (req, res, next) => {
@@ -94,19 +96,57 @@ export const updateCategory = [isAdmin, async (req, res) => {
 // DELETE /api/categories/:id
 export const deleteCategory = [isAdmin, async (req, res) => {
     const { id } = req.params;
+    const connection = await db.getConnection();
     try {
-        const [result] = await db.query('DELETE FROM categorias_receitas WHERE id = ?', [id]);
-        if (result.affectedRows === 0) {
+        await connection.beginTransaction();
+
+        // First, get the category to find the image URL
+        const [categories] = await connection.query('SELECT imagem_url FROM categorias_receitas WHERE id = ?', [id]);
+
+        if (categories.length === 0) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Categoria não encontrada.' });
         }
+
+        const category = categories[0];
+        const { imagem_url } = category;
+
+        // If there is an image, delete it from the filesystem
+        if (imagem_url) {
+            const imagePath = path.join(process.cwd(), 'uploads', imagem_url);
+            if (fs.existsSync(imagePath)) {
+                fs.unlink(imagePath, (err) => {
+                    if (err) {
+                        // Log the error, but don't block the deletion of the category
+                        console.error('Erro ao deletar a imagem da categoria:', err);
+                    }
+                });
+            }
+        }
+
+        // Then, delete the category from the database
+        const [result] = await connection.query('DELETE FROM categorias_receitas WHERE id = ?', [id]);
+
+        if (result.affectedRows === 0) {
+            // This case should ideally not be reached due to the check above, but as a safeguard:
+            await connection.rollback();
+            return res.status(404).json({ message: 'Categoria não encontrada.' });
+        }
+
+        await connection.commit();
         res.status(204).send(); // No content
+
     } catch (error) {
+        await connection.rollback();
         // Check for foreign key constraint violation error
         if (error.code === 'ER_ROW_IS_REFERENCED_2') { 
             return res.status(409).json({
                 message: 'Não é possível deletar esta categoria porque existem receitas associadas a ela. Por favor, remova ou reassocie as receitas antes de tentar novamente.'
             });
         }
+        console.error('Erro ao deletar categoria:', error);
         res.status(500).json({ message: 'Erro interno no servidor.', error: error.message });
+    } finally {
+        if (connection) connection.release();
     }
 }];
