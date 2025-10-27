@@ -191,7 +191,7 @@ export const updateEbook = async (req, res) => {
       "SELECT * FROM ebooks WHERE id = ? AND usuario_id = ?",
       [id, req.user.id]
     );
-    if (existingEebookResult?.length === 0) {
+    if (existingEbookResult?.length === 0) {
       await connection.rollback();
       return res
         .status(404)
