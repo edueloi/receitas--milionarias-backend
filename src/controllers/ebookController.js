@@ -146,11 +146,19 @@ export const getAllEbooks = async (req, res) => {
 export const getEbookById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [ebooks] = await db.query("SELECT * FROM ebooks_vw WHERE id = ?", [id]);
+    let [ebooks] = await db.query("SELECT * FROM ebooks_vw WHERE id = ?", [id]);
     if (ebooks.length === 0) {
       return res.status(404).json({ message: "Ebook não encontrado." });
     }
-    const ebook = ebooks[0];
+
+    let ebook = ebooks[0];
+
+    // Fallback if view is outdated
+    if (!ebook.descricao) {
+      [ebooks] = await db.query("SELECT * FROM ebooks WHERE id = ?", [id]);
+      ebook = ebooks[0];
+    }
+
     const [tags] = await db.query(
       "SELECT t.id, t.nome FROM ebook_tags et JOIN tags t ON et.tag_id = t.id WHERE et.ebook_id = ?",
       [id]
