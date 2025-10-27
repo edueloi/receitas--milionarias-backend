@@ -2,6 +2,7 @@
 
 import stripePackage from "stripe";
 import dotenv from 'dotenv';
+import db from '../config/db.js';
 dotenv.config();
 
 // Inicializa o Stripe com a sua chave secreta

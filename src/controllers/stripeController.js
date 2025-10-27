@@ -49,17 +49,11 @@ export const createCheckoutSession = async (req, res) => {
             payment_method_types: ['card'],
             line_items: [
                 {
-                    price_data: {
-                        currency: 'brl',
-                        product_data: {
-                            name: 'Acesso Vitalício',
-                        },
-                        unit_amount: 2990, // R$39,90
-                    },
+                    price: process.env.STRIPE_PRICE_ID,
                     quantity: 1,
                 },
             ],
-            mode: 'payment',
+            mode: 'subscription',
             success_url: success_url,
             cancel_url: cancel_url,
             customer_email: email,
