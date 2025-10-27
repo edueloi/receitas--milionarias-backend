@@ -71,3 +71,37 @@ export const createCheckoutSession = async (req, res) => {
         res.status(500).json({ message: 'Erro ao criar sessão de checkout.', error: error.message });
     }
 };
+
+export const onboardUser = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await db.query('SELECT stripe_account_id, email FROM usuarios WHERE id = ?', [userId]);
+        let accountId = rows[0]?.stripe_account_id;
+
+        if (!accountId) {
+            const account = await stripe.accounts.create({
+                type: 'express',
+                email: rows[0]?.email,
+                country: 'BR',
+                capabilities: {
+                    card_payments: { requested: true },
+                    transfers: { requested: true },
+                },
+            });
+            accountId = account.id;
+            await db.query('UPDATE usuarios SET stripe_account_id = ? WHERE id = ?', [accountId, userId]);
+        }
+
+        const accountLink = await stripe.accountLinks.create({
+            account: accountId,
+            refresh_url: `${process.env.FRONTEND_URL}/profile`,
+            return_url: `${process.env.FRONTEND_URL}/profile`,
+            type: 'account_onboarding',
+        });
+
+        res.json({ url: accountLink.url });
+    } catch (error) {
+        console.error('Erro ao criar conta Stripe Connect:', error);
+        res.status(500).json({ message: 'Erro ao criar conta Stripe Connect.', error: error.message });
+    }
+};
