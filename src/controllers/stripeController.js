@@ -40,3 +40,40 @@ export const getStripeBalance = async (req, res) => {
         res.status(500).json({ message: 'Erro interno no servidor ao buscar saldo.', error: error.message });
     }
 };
+
+export const createCheckoutSession = async (req, res) => {
+    const { email, firstName, lastName, affiliateId, success_url, cancel_url } = req.body;
+
+    try {
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [
+                {
+                    price_data: {
+                        currency: 'brl',
+                        product_data: {
+                            name: 'Acesso Vitalício',
+                        },
+                        unit_amount: 2990, // R$39,90
+                    },
+                    quantity: 1,
+                },
+            ],
+            mode: 'payment',
+            success_url: success_url,
+            cancel_url: cancel_url,
+            customer_email: email,
+            client_reference_id: email, // Usando o email como referência
+            metadata: {
+                firstName,
+                lastName,
+                affiliateId,
+            }
+        });
+
+        res.json({ id: session.id });
+    } catch (error) {
+        console.error('Erro ao criar sessão de checkout:', error);
+        res.status(500).json({ message: 'Erro ao criar sessão de checkout.', error: error.message });
+    }
+};
