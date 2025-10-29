@@ -45,25 +45,64 @@ export const createCheckoutSession = async (req, res) => {
     const { email, firstName, lastName, affiliateId, success_url, cancel_url } = req.body;
 
     try {
-        const session = await stripe.checkout.sessions.create({
-            payment_method_types: ['card'],
-            line_items: [
-                {
-                    price: process.env.STRIPE_PRICE_ID,
-                    quantity: 1,
+        let sessionConfig;
+
+        const lineItems = [{
+            price_data: {
+                currency: 'brl',
+                product_data: {
+                    name: 'Acesso Vitalício',
                 },
-            ],
-            mode: 'subscription',
-            success_url: success_url,
-            cancel_url: cancel_url,
-            customer_email: email,
-            client_reference_id: email, // Usando o email como referência
-            metadata: {
-                firstName,
-                lastName,
-                affiliateId,
+                unit_amount: 2990, // R$ 29,90
+            },
+            quantity: 1,
+        }];
+
+        if (affiliateId) {
+            const [rows] = await db.query('SELECT stripe_account_id FROM usuarios WHERE id = ?', [affiliateId]);
+            const affiliateStripeAccountId = rows[0]?.stripe_account_id;
+
+            if (affiliateStripeAccountId) {
+                sessionConfig = {
+                    payment_method_types: ['card'],
+                    line_items: lineItems,
+                    mode: 'payment',
+                    success_url: success_url,
+                    cancel_url: cancel_url,
+                    customer_email: email,
+                    client_reference_id: email,
+                    metadata: {
+                        firstName,
+                        lastName,
+                        affiliateId,
+                    },
+                    payment_intent_data: {
+                        transfer_data: {
+                            destination: affiliateStripeAccountId,
+                            amount: 990, // R$ 9,90
+                        },
+                    },
+                };
             }
-        });
+        }
+
+        if (!sessionConfig) {
+            sessionConfig = {
+                payment_method_types: ['card'],
+                line_items: lineItems,
+                mode: 'payment',
+                success_url: success_url,
+                cancel_url: cancel_url,
+                customer_email: email,
+                client_reference_id: email,
+                metadata: {
+                    firstName,
+                    lastName,
+                },
+            };
+        }
+
+        const session = await stripe.checkout.sessions.create(sessionConfig);
 
         res.json({ id: session.id });
     } catch (error) {
