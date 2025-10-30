@@ -496,9 +496,16 @@ export const getAllRecipes = async (req, res) => {
     let whereClause = "WHERE 1=1";
     const whereParams = [];
 
-    if (status) {
-      whereClause += " AND r.status = ?";
-      whereParams.push(status);
+    // Se vier allStatus=true, não filtra por status (dashboard do usuário)
+    const allStatus = req.query.allStatus === 'true';
+    if (!allStatus) {
+      if (status) {
+        whereClause += " AND r.status = ?";
+        whereParams.push(status);
+      } else {
+        whereClause += " AND r.status = ?";
+        whereParams.push("ativo");
+      }
     }
     if (search) {
       whereClause += " AND (r.titulo LIKE ? OR r.resumo LIKE ?)";
