@@ -268,6 +268,7 @@ export const getUserProfile = async (req, res) => {
                 u.endereco, u.numero_endereco, u.complemento, u.bairro, 
                 u.cep, u.cidade, u.estado, u.biografia, u.profissao, u.escolaridade,
                 u.foto_perfil_url,
+                    u.stripe_account_id,
                 u.codigo_afiliado_proprio,
                 u.id_afiliado_indicador,
                 indicador.nome as nome_indicador,

@@ -107,6 +107,7 @@ export const createCheckoutSession = async (req, res) => {
         res.json({ id: session.id });
     } catch (error) {
         console.error('Erro ao criar sessão de checkout:', error);
+        console.error('Detalhes do erro do Stripe:', error.raw?.message || error.message);
         res.status(500).json({ message: 'Erro ao criar sessão de checkout.', error: error.message });
     }
 };
@@ -142,5 +143,37 @@ export const onboardUser = async (req, res) => {
     } catch (error) {
         console.error('Erro ao criar conta Stripe Connect:', error);
         res.status(500).json({ message: 'Erro ao criar conta Stripe Connect.', error: error.message });
+    }
+};
+
+export const getConnectedAccount = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await db.query('SELECT stripe_account_id FROM usuarios WHERE id = ?', [userId]);
+        const accountId = rows[0]?.stripe_account_id;
+
+        if (!accountId) {
+            return res.json({ connected: false });
+        }
+
+        // Retrieve account details from Stripe
+        const account = await stripe.accounts.retrieve(accountId);
+
+        // Return a simplified view of the connected account
+        const safeAccount = {
+            id: account.id,
+            email: account.email || null,
+            business_type: account.business_type || null,
+            country: account.country || null,
+            capabilities: account.capabilities || {},
+            charges_enabled: account.charges_enabled || false,
+            payouts_enabled: account.payouts_enabled || false,
+            details_submitted: account.details_submitted || false,
+        };
+
+        return res.json({ connected: true, account: safeAccount });
+    } catch (error) {
+        console.error('Erro ao buscar conta conectada do Stripe:', error);
+        return res.status(500).json({ message: 'Erro ao buscar conta conectada do Stripe.', error: error.message });
     }
 };

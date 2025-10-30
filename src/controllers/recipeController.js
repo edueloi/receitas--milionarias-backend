@@ -179,22 +179,24 @@ export const getRecipeById = async (req, res) => {
       [id]
     );
 
-    const [avaliacoes] = await connection.query(
-      "SELECT avaliacao FROM comentarios_avaliacoes WHERE id_receita = ? AND avaliacao IS NOT NULL",
-      [id]
+    // Agregar avaliações e comentários a partir da tabela comentarios_avaliacoes
+    const [avaliacoesAgregadas] = await connection.query(
+      `SELECT 
+          COUNT(avaliacao) AS quantidade_avaliacoes,
+          AVG(avaliacao) AS media_avaliacoes,
+          COUNT(comentario) AS quantidade_comentarios,
+          COALESCE(SUM(avaliacao), 0) AS soma_pontos
+       FROM comentarios_avaliacoes
+       WHERE id_receita = ?`
+      , [id]
     );
 
-    let media = 0;
-    const totalAvaliacoes = avaliacoes.length;
-
-    if (totalAvaliacoes > 0) {
-      const soma = avaliacoes.reduce((acc, item) => acc + item.avaliacao, 0);
-      media = soma / totalAvaliacoes;
-    }
-
+    const agg = avaliacoesAgregadas[0] || {};
     const resultados_avaliacao = {
-      quantidade_avaliacoes: totalAvaliacoes,
-      media_avaliacoes: parseFloat(media.toFixed(2)),
+      quantidade_avaliacoes: parseInt(agg.quantidade_avaliacoes || 0, 10),
+      media_avaliacoes: parseFloat((Number(agg.media_avaliacoes) || 0).toFixed(2)),
+      quantidade_comentarios: parseInt(agg.quantidade_comentarios || 0, 10),
+      soma_pontos: Number(agg.soma_pontos || 0),
     };
 
     const criador = {
@@ -528,11 +530,14 @@ export const getAllRecipes = async (req, res) => {
     const totalItems = countResult[0].total;
     const totalPages = Math.ceil(totalItems / limit);
 
+    // Join com agregação de comentários/avaliacões para evitar depender de colunas denormalizadas
     const dataQuery = `
   SELECT
     r.*,
-    r.media_avaliacoes,
-    r.quantidade_avaliacoes,
+    COALESCE(ca.quantidade_avaliacoes, 0) AS quantidade_avaliacoes,
+    COALESCE(ca.media_avaliacoes, 0) AS media_avaliacoes,
+    COALESCE(ca.quantidade_comentarios, 0) AS quantidade_comentarios,
+    COALESCE(ca.soma_pontos, 0) AS soma_pontos,
     u.nome AS criador_nome,
     u.codigo_afiliado_proprio AS criador_codigo_afiliado,
     u.foto_perfil_url AS criador_foto_url,
@@ -544,6 +549,15 @@ export const getAllRecipes = async (req, res) => {
   JOIN usuarios AS u ON r.id_usuario_criador = u.id
   LEFT JOIN midia AS m ON r.id_midia_principal = m.id
   LEFT JOIN categorias_receitas AS c ON r.id_categoria = c.id
+  LEFT JOIN (
+     SELECT id_receita,
+            COUNT(avaliacao) AS quantidade_avaliacoes,
+            AVG(avaliacao) AS media_avaliacoes,
+            COUNT(comentario) AS quantidade_comentarios,
+            COALESCE(SUM(avaliacao),0) AS soma_pontos
+     FROM comentarios_avaliacoes
+     GROUP BY id_receita
+  ) AS ca ON ca.id_receita = r.id
   ${whereClause}
   ORDER BY ${sort} ${order}
   LIMIT ?
@@ -566,13 +580,17 @@ export const getAllRecipes = async (req, res) => {
           [recipe.id]
         );
 
+        // Na listagem pública queremos apenas: quantidade de comentários e média de estrelas
         const resultados_avaliacao = {
-          quantidade_avaliacoes: recipe.quantidade_avaliacoes || 0,
-          media_avaliacoes: parseFloat(recipe.media_avaliacoes || 0).toFixed(2),
+          quantidade_comentarios: parseInt(recipe.quantidade_comentarios || 0, 10),
+          media_avaliacoes: parseFloat((Number(recipe.media_avaliacoes) || 0).toFixed(2)),
         };
 
+        // Remove campos brutos vindos da query
         delete recipe.media_avaliacoes;
         delete recipe.quantidade_avaliacoes;
+        delete recipe.quantidade_comentarios;
+        delete recipe.soma_pontos;
 
         const criador = {
           id: recipe.id_usuario_criador,

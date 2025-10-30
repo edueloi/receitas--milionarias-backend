@@ -76,7 +76,7 @@ export const getStripeDashboardData = async (req, res) => {
     if (gte) chargesParams.created = { gte };
 
     // ================================
-    // 🔄 Requisições principais Stripe
+    // 🔄 Requisições principais Stripe (padrão: dados da plataforma)
     // ================================
     const [customersList, subsList, chargesList, transfersList, balance, payouts] =
       await Promise.all([
@@ -88,10 +88,81 @@ export const getStripeDashboardData = async (req, res) => {
         stripe.payouts.list({ limit: 5 }),
       ]);
 
-    const customers = customersList.data;
-    const subs = subsList.data;
-    const charges = chargesList.data;
-    const transfers = transfersList.data;
+    let customers = customersList.data;
+    let subs = subsList.data;
+    let charges = chargesList.data;
+    let transfers = transfersList.data;
+
+    // Se a requisição veio de um usuário autenticado que NÃO é admin,
+    // precisamos filtrar os dados para retornar apenas o que diz respeito
+    // à conta Stripe conectada desse usuário.
+    const isAdmin = req.user && (req.user.role === 1 || req.user.role === 'admin' || req.user.role === '1');
+    if (req.user && !isAdmin) {
+      // Buscar stripe_account_id no banco
+      const [rows] = await db.query('SELECT stripe_account_id FROM usuarios WHERE id = ?', [req.user.id]);
+      const accountId = rows[0]?.stripe_account_id;
+
+      if (!accountId) {
+        // Usuário não conectou Stripe — retornar payload reduzido (sem dados do Stripe)
+        return res.json({
+          period: range,
+          customers: [],
+          subscriptions: [],
+          pagamentos: [],
+          total: { bruto: 0, tarifa: 0, liquido: 0 },
+          transfers: [],
+          totalTransferencias: 0,
+          balance: { availableBrl: 0, pendingBrl: 0 },
+          proximosVencimentos: [],
+          proximosRepasses: [],
+          afiliados: {},
+          ganhosPorAfiliado: {},
+          totalClientes: 0,
+          totalAssinaturas: 0,
+        });
+      }
+
+      // Filtrar transfers que tem destino nessa account
+      transfers = transfers.filter((t) => t.destination === accountId);
+
+      // Calcular totais apenas a partir das transferências para essa conta
+      const totalTransferenciasFiltered = transfers.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      // Tentar obter o balance diretamente da conta conectada
+      let connectedBalance = { available: [], pending: [] };
+      try {
+        connectedBalance = await stripe.balance.retrieve({ stripeAccount: accountId });
+      } catch (err) {
+        console.warn('Não foi possível recuperar balance da conta conectada:', err.message || err);
+      }
+
+      const availableBrlConn =
+        connectedBalance.available?.find((b) => b.currency === 'brl')?.amount ?? 0;
+      const pendingBrlConn =
+        connectedBalance.pending?.find((b) => b.currency === 'brl')?.amount ?? 0;
+
+      // Montar resposta reduzida — focada na conta do usuário
+      return res.json({
+        period: range,
+        customers: [],
+        subscriptions: [],
+        pagamentos: [],
+        total: {
+          bruto: totalTransferenciasFiltered,
+          tarifa: 0,
+          liquido: totalTransferenciasFiltered,
+        },
+        transfers,
+        totalTransferencias: totalTransferenciasFiltered,
+        balance: { availableBrl: availableBrlConn, pendingBrl: pendingBrlConn },
+        proximosVencimentos: [],
+        proximosRepasses: [],
+        afiliados: {},
+        ganhosPorAfiliado: {},
+        totalClientes: 0,
+        totalAssinaturas: 0,
+      });
+    }
 
     // ================================
     // 🧭 Mapas auxiliares
