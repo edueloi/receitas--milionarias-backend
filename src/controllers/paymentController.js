@@ -16,18 +16,18 @@ const normalizeMpError = (error) => ({
   request: error?.request,
 });
 
-// ---- Boot check
-if (!process.env.MERCADOPAGO_ACCESS_TOKEN) {
-  console.error(
-    "[BOOT] MERCADOPAGO_ACCESS_TOKEN não carregado! Verifique seu .env.development"
-  );
-}
-showTokenPrefix();
+// ---- Boot check (DESATIVADO - Usando apenas Stripe)
+// if (!process.env.MERCADOPAGO_ACCESS_TOKEN) {
+//   console.error(
+//     "[BOOT] MERCADOPAGO_ACCESS_TOKEN não carregado! Verifique seu .env.development"
+//   );
+// }
+// showTokenPrefix();
 
-// ---- MP Client
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
-});
+// ---- MP Client (DESATIVADO - Usando apenas Stripe)
+const client = process.env.MERCADOPAGO_ACCESS_TOKEN 
+  ? new MercadoPagoConfig({ accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN })
+  : null;
 
 // Criar assinatura (Checkout de Assinatura)
 export const createSubscription = async (req, res) => {
