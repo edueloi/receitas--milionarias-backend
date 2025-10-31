@@ -115,8 +115,21 @@ export const createCheckoutSession = async (req, res) => {
 export const onboardUser = async (req, res) => {
     try {
         const userId = req.user.id;
-        const [rows] = await db.query('SELECT stripe_account_id, email FROM usuarios WHERE id = ?', [userId]);
-        let accountId = rows[0]?.stripe_account_id;
+        const [rows] = await db.query(
+            `SELECT 
+                stripe_account_id, 
+                email, 
+                nome, 
+                sobrenome,
+                codigo_afiliado_proprio,
+                id_afiliado_indicador
+             FROM usuarios 
+             WHERE id = ?`, 
+            [userId]
+        );
+        
+        const userData = rows[0];
+        let accountId = userData?.stripe_account_id;
 
         // If there's an existing account ID, verify it's still valid
         if (accountId) {
@@ -135,17 +148,30 @@ export const onboardUser = async (req, res) => {
         }
 
         if (!accountId) {
+            // Criar conta com metadata do afiliado
             const account = await stripe.accounts.create({
                 type: 'express',
-                email: rows[0]?.email,
+                email: userData?.email,
                 country: 'BR',
                 capabilities: {
                     card_payments: { requested: true },
                     transfers: { requested: true },
                 },
+                metadata: {
+                    user_id: userId.toString(),
+                    codigo_afiliado: userData?.codigo_afiliado_proprio || '',
+                    id_afiliado_indicador: userData?.id_afiliado_indicador?.toString() || '',
+                    nome_completo: `${userData?.nome || ''} ${userData?.sobrenome || ''}`.trim()
+                }
             });
             accountId = account.id;
             await db.query('UPDATE usuarios SET stripe_account_id = ? WHERE id = ?', [accountId, userId]);
+            
+            console.log('✅ Conta Stripe Connect criada com metadata:', {
+                accountId,
+                userId,
+                codigo_afiliado: userData?.codigo_afiliado_proprio
+            });
         }
 
         const accountLink = await stripe.accountLinks.create({
