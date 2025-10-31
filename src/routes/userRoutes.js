@@ -1,4 +1,3 @@
-// src/routes/userRoutes.js
 import express from 'express';
 import {
     registerUser,
@@ -15,7 +14,8 @@ import {
     updateUser,
     syncUserStatusFromStripe,
     getReferredUsers,
-    updatePixKey
+    updatePixKey,
+    deleteUser
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
@@ -478,5 +478,30 @@ router.post('/users/sync-stripe', syncUserStatusFromStripe);
 
 router.get("/users", authMiddleware, getAllUsers);
 router.get("/users/referred", authMiddleware, getReferredUsers);
+
+/**
+ * @swagger
+ * /users/{id}:
+ *   delete:
+ *     summary: Deleta um usuário (apenas admins)
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID do usuário a ser deletado
+ *     responses:
+ *       200:
+ *         description: Usuário deletado com sucesso
+ *       403:
+ *         description: Sem permissão ou tentativa de deletar a própria conta
+ *       404:
+ *         description: Usuário não encontrado
+ */
+router.delete("/users/:id", authMiddleware, deleteUser);
 
 export default router;

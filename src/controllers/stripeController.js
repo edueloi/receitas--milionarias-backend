@@ -2,7 +2,10 @@
 import Stripe from 'stripe';
 import db from '../config/db.js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// ✅ Inicializa Stripe com a versão mais recente da API
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-10-29.clover', // Versão mais recente do Stripe
+});
 
 export const getStripeBalance = async (req, res) => {
     try {
@@ -47,22 +50,26 @@ export const createCheckoutSession = async (req, res) => {
     try {
         let sessionConfig;
 
+        // ✅ Define os itens da compra (R$ 29,90)
         const lineItems = [{
             price_data: {
                 currency: 'brl',
                 product_data: {
-                    name: 'Acesso Vitalício',
+                    name: 'Acesso Vitalício - Receitas Milionárias',
+                    description: 'Acesso completo e vitalício a todas as receitas da plataforma',
                 },
-                unit_amount: 2990, // R$ 29,90
+                unit_amount: 2990, // R$ 29,90 em centavos
             },
             quantity: 1,
         }];
 
+        // ✅ Se houver afiliado, cria checkout com split de pagamento
         if (affiliateId) {
             const [rows] = await db.query('SELECT stripe_account_id FROM usuarios WHERE id = ?', [affiliateId]);
             const affiliateStripeAccountId = rows[0]?.stripe_account_id;
 
             if (affiliateStripeAccountId) {
+                // ✅ DESTINATION CHARGE: Plataforma recebe, Stripe divide automaticamente
                 sessionConfig = {
                     payment_method_types: ['card'],
                     line_items: lineItems,
@@ -77,15 +84,29 @@ export const createCheckoutSession = async (req, res) => {
                         affiliateId,
                     },
                     payment_intent_data: {
+                        // ✅ Transfer Data: R$ 9,90 vai DIRETO para o afiliado
                         transfer_data: {
                             destination: affiliateStripeAccountId,
-                            amount: 990, // R$ 9,90
+                            amount: 990, // R$ 9,90 em centavos para o afiliado
                         },
+                        // ✅ Metadata para rastreamento
+                        metadata: {
+                            affiliate_id: affiliateId,
+                            split_type: 'destination_charge',
+                        }
                     },
                 };
+                
+                console.log('✅ Checkout com afiliado criado:', {
+                    total: 'R$ 29,90',
+                    affiliate_amount: 'R$ 9,90',
+                    platform_amount: 'R$ 20,00',
+                    affiliate_account: affiliateStripeAccountId
+                });
             }
         }
 
+        // ✅ Se NÃO houver afiliado, plataforma recebe tudo
         if (!sessionConfig) {
             sessionConfig = {
                 payment_method_types: ['card'],
@@ -100,13 +121,18 @@ export const createCheckoutSession = async (req, res) => {
                     lastName,
                 },
             };
+            
+            console.log('✅ Checkout SEM afiliado criado:', {
+                total: 'R$ 29,90',
+                platform_amount: 'R$ 29,90 (100%)'
+            });
         }
 
         const session = await stripe.checkout.sessions.create(sessionConfig);
 
         res.json({ id: session.id });
     } catch (error) {
-        console.error('Erro ao criar sessão de checkout:', error);
+        console.error('❌ Erro ao criar sessão de checkout:', error);
         console.error('Detalhes do erro do Stripe:', error.raw?.message || error.message);
         res.status(500).json({ message: 'Erro ao criar sessão de checkout.', error: error.message });
     }
@@ -148,42 +174,81 @@ export const onboardUser = async (req, res) => {
         }
 
         if (!accountId) {
-            // Criar conta com metadata do afiliado
+            // ✅ Cria conta Stripe Connect seguindo as melhores práticas 2025
+            // Usando 'controller' em vez de 'type' (deprecated)
             const account = await stripe.accounts.create({
-                type: 'express',
-                email: userData?.email,
-                country: 'BR',
+                // ✅ CONTROLLER: Define responsabilidades da plataforma
+                controller: {
+                    // Plataforma responsável por pricing e coleta de tarifas
+                    fees: {
+                        payer: 'application' // Plataforma paga as tarifas
+                    },
+                    // Plataforma responsável por perdas/reembolsos/chargebacks
+                    losses: {
+                        payments: 'application' // Plataforma assume riscos
+                    },
+                    // Acesso ao Express Dashboard para o afiliado
+                    stripe_dashboard: {
+                        type: 'express' // Dashboard Express para gestão
+                    }
+                },
+                // ✅ Capabilities necessárias para receber pagamentos
                 capabilities: {
                     card_payments: { requested: true },
                     transfers: { requested: true },
                 },
+                // ✅ País da conta (Brasil)
+                country: 'BR',
+                // ✅ Email do afiliado
+                email: userData?.email,
+                // ✅ Metadata para rastreamento e referência
                 metadata: {
                     user_id: userId.toString(),
                     codigo_afiliado: userData?.codigo_afiliado_proprio || '',
                     id_afiliado_indicador: userData?.id_afiliado_indicador?.toString() || '',
-                    nome_completo: `${userData?.nome || ''} ${userData?.sobrenome || ''}`.trim()
+                    nome_completo: `${userData?.nome || ''} ${userData?.sobrenome || ''}`.trim(),
+                    platform: 'receitas_milionarias',
+                    created_at: new Date().toISOString()
                 }
             });
+            
             accountId = account.id;
+            
+            // ✅ Salva o ID da conta Stripe no banco de dados
             await db.query('UPDATE usuarios SET stripe_account_id = ? WHERE id = ?', [accountId, userId]);
             
-            console.log('✅ Conta Stripe Connect criada com metadata:', {
+            console.log('✅ Conta Stripe Connect criada com sucesso:', {
                 accountId,
                 userId,
-                codigo_afiliado: userData?.codigo_afiliado_proprio
+                codigo_afiliado: userData?.codigo_afiliado_proprio,
+                controller_config: {
+                    fees_payer: 'application',
+                    losses_handler: 'application',
+                    dashboard_type: 'express'
+                }
             });
         }
 
+        // ✅ Cria Account Link para onboarding hospedado pela Stripe
         const accountLink = await stripe.accountLinks.create({
             account: accountId,
-            refresh_url: `${process.env.FRONTEND_URL}/profile`,
-            return_url: `${process.env.FRONTEND_URL}/profile`,
+            // Refresh URL: onde usuário volta se sessão expirar
+            refresh_url: `${process.env.FRONTEND_URL}/stripe-onboarding`,
+            // Return URL: onde usuário volta após completar onboarding
+            return_url: `${process.env.FRONTEND_URL}/stripe-onboarding?success=true`,
+            // Tipo: onboarding da conta
             type: 'account_onboarding',
+        });
+
+        console.log('✅ Account Link criado para onboarding:', {
+            accountId,
+            url: accountLink.url,
+            expires_at: accountLink.expires_at
         });
 
         res.json({ url: accountLink.url });
     } catch (error) {
-        console.error('Erro ao criar conta Stripe Connect:', error);
+        console.error('❌ Erro ao criar conta Stripe Connect:', error);
         res.status(500).json({ message: 'Erro ao criar conta Stripe Connect.', error: error.message });
     }
 };

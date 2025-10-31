@@ -117,8 +117,8 @@ export const loginUser = async (req, res) => {
     }
 
     try {
-        // 1. Buscar usuário e incluir o status
-        const [users] = await db.query('SELECT id, senha_hash, id_permissao, id_status FROM usuarios WHERE email = ?', [email]);
+        // 1. Buscar usuário e incluir o status e informações necessárias
+        const [users] = await db.query('SELECT id, nome, sobrenome, email, senha_hash, id_permissao, id_status, id_afiliado_indicador FROM usuarios WHERE email = ?', [email]);
 
         if (users.length === 0) {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
@@ -138,8 +138,17 @@ export const loginUser = async (req, res) => {
             case 1: // Ativo
                 // Continua para gerar o token
                 break;
-            case 3: // Pendente
-                return res.status(403).json({ message: 'Cadastro pendente. É necessário efetuar o pagamento para ativar sua conta.' });
+            case 3: // Pendente - Retornar dados para iniciar checkout
+                return res.status(403).json({ 
+                    message: 'Cadastro pendente. É necessário efetuar o pagamento para ativar sua conta.',
+                    isPending: true,
+                    userData: {
+                        email: user.email,
+                        firstName: user.nome,
+                        lastName: user.sobrenome,
+                        affiliateId: user.id_afiliado_indicador || ''
+                    }
+                });
             case 2: // Inativo
             case 4: // Bloqueado
                 return res.status(403).json({ message: 'Acesso bloqueado. Por favor, entre em contato com o suporte.' });
@@ -706,5 +715,58 @@ export const getReferredUsers = async (req, res) => {
     } catch (error) {
         console.error('Erro ao buscar usuários indicados:', error);
         res.status(500).json({ message: 'Erro interno no servidor.' });
+    }
+};
+
+// --- DELETE USER ---
+export const deleteUser = async (req, res) => {
+    const { id } = req.params;
+    const requestingUserId = req.user.id;
+    const requestingUserRole = req.user.role;
+
+    try {
+        // Verificar se o usuário existe
+        const [users] = await db.query('SELECT * FROM usuarios WHERE id = ?', [id]);
+        if (users.length === 0) {
+            return res.status(404).json({ message: 'Usuário não encontrado.' });
+        }
+
+        const userToDelete = users[0];
+
+        // Impedir que o usuário delete a si mesmo
+        if (parseInt(id) === requestingUserId) {
+            return res.status(403).json({ message: 'Você não pode deletar sua própria conta.' });
+        }
+
+        // Apenas admins podem deletar usuários (role 1)
+        if (requestingUserRole !== 1) {
+            return res.status(403).json({ message: 'Você não tem permissão para deletar usuários.' });
+        }
+
+        // Deletar avatar se existir
+        if (userToDelete.foto_perfil) {
+            const avatarPath = path.join(process.cwd(), 'uploads', userToDelete.foto_perfil);
+            if (fs.existsSync(avatarPath)) {
+                fs.unlinkSync(avatarPath);
+            }
+        }
+
+        // Deletar o usuário
+        await db.query('DELETE FROM usuarios WHERE id = ?', [id]);
+
+        // 🔔 Notificar admin sobre exclusão
+        await notifyUserDeletion(`${userToDelete.nome} ${userToDelete.sobrenome}`, userToDelete.email);
+
+        res.json({ 
+            message: 'Usuário deletado com sucesso.',
+            deletedUser: {
+                id: userToDelete.id,
+                nome: userToDelete.nome,
+                email: userToDelete.email
+            }
+        });
+    } catch (error) {
+        console.error('Erro ao deletar usuário:', error);
+        res.status(500).json({ message: 'Erro interno no servidor ao deletar usuário.' });
     }
 };

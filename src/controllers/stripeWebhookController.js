@@ -178,6 +178,105 @@ async function handleSuccessfulPayment(paymentIntent) {
 }
 
 /**
+ * Ativa usuário após pagamento bem-sucedido via Payment Link ou Checkout
+ */
+async function handleCheckoutCompleted(session) {
+  try {
+    const { customer_email, customer_details, metadata, id: sessionId, amount_total } = session;
+    
+    // Pega o email do cliente (payment link usa customer_details)
+    const email = customer_email || customer_details?.email;
+    
+    if (!email) {
+      console.log('⚠️ Nenhum email encontrado na session:', sessionId);
+      return;
+    }
+    
+    console.log('📧 Buscando usuário com email:', email);
+    
+    // Busca usuário pelo email
+    const [users] = await db.query(
+      'SELECT id, nome, id_status, id_afiliado_indicador FROM usuarios WHERE LOWER(email) = LOWER(?)',
+      [email]
+    );
+    
+    if (users.length === 0) {
+      console.log('⚠️ Usuário não encontrado com email:', email);
+      return;
+    }
+    
+    const user = users[0];
+    
+    // Se já está ativo, não faz nada
+    if (user.id_status === 1) {
+      console.log('✅ Usuário já está ativo:', email);
+      return;
+    }
+    
+    // Ativa o usuário (status 1 = Ativo)
+    await db.query(
+      `UPDATE usuarios 
+       SET id_status = 1,
+           data_ativacao = NOW(),
+           data_expiracao_assinatura = DATE_ADD(NOW(), INTERVAL 365 DAY)
+       WHERE id = ?`,
+      [user.id]
+    );
+    
+    console.log('✅ Usuário ativado com sucesso:', {
+      userId: user.id,
+      email: email,
+      amount: amount_total / 100,
+      sessionId
+    });
+    
+    // Se tiver afiliado, registra comissão
+    if (user.id_afiliado_indicador) {
+      const valorComissao = 9.90; // R$ 9,90 fixo para afiliado
+      const dataLiberacao = new Date();
+      dataLiberacao.setDate(dataLiberacao.getDate() + 30); // Libera após 30 dias
+      
+      await db.query(
+        `INSERT INTO comissoes 
+         (id_afiliado, id_usuario_indicado, id_pagamento, valor, status, data_liberacao)
+         VALUES (?, ?, NULL, ?, 'pendente', ?)`,
+        [user.id_afiliado_indicador, user.id, valorComissao, dataLiberacao]
+      );
+      
+      console.log('💰 Comissão registrada para afiliado:', user.id_afiliado_indicador);
+      
+      // Notifica o afiliado
+      await db.query(
+        `INSERT INTO notificacoes 
+         (user_id, tipo, titulo, mensagem, link)
+         VALUES (?, 'comissao', ?, ?, '/afiliados')`,
+        [
+          user.id_afiliado_indicador,
+          'Nova Comissão! 🎉',
+          `${user.nome} se cadastrou usando seu link de afiliado! Você ganhou R$ 9,90 de comissão.`
+        ]
+      );
+    }
+    
+    // Notifica o usuário que foi ativado
+    await db.query(
+      `INSERT INTO notificacoes 
+       (user_id, tipo, titulo, mensagem, link)
+       VALUES (?, 'sistema', ?, ?, '/dashboard')`,
+      [
+        user.id,
+        'Bem-vindo! 🎉',
+        'Sua conta foi ativada com sucesso! Aproveite todas as receitas.'
+      ]
+    );
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar checkout completed:', error);
+    throw error;
+  }
+}
+
+/**
  * Webhook principal do Stripe
  */
 export const handleStripeWebhook = async (req, res) => {
@@ -205,9 +304,10 @@ export const handleStripeWebhook = async (req, res) => {
         break;
         
       case 'checkout.session.completed':
+        // ✅ NOVO: Ativa usuário automaticamente via Payment Link ou Checkout
         const session = event.data.object;
         console.log('✅ Checkout session completed:', session.id);
-        // Você pode adicionar lógica adicional aqui se necessário
+        await handleCheckoutCompleted(session);
         break;
         
       case 'account.updated':
