@@ -15,8 +15,19 @@ export const getRolePermissions = async (req, res) => {
       return res.json({});
     }
 
-    // O banco de dados retorna o JSON como uma string, então precisamos fazer o parse
-    res.json(JSON.parse(rows[0].permissions_json));
+    // O MySQL pode retornar o JSON como objeto ou string, dependendo da configuração
+    const permissions = rows[0].permissions_json;
+    
+    if (typeof permissions === 'string') {
+      // Se for string, faz o parse
+      res.json(JSON.parse(permissions));
+    } else if (typeof permissions === 'object') {
+      // Se já for objeto, retorna diretamente
+      res.json(permissions);
+    } else {
+      // Fallback para objeto vazio
+      res.json({});
+    }
   } catch (error) {
     console.error(`Erro ao buscar permissões para a role ${role}:`, error);
     res.status(500).json({ message: 'Erro interno no servidor.' });

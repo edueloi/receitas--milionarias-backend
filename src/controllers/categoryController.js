@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import fs from 'fs';
 import path from 'path';
+import { notifyNewCategory } from '../services/notificationService.js';
 
 // Middleware de verificação de admin (a ser criado/usado no futuro)
 const isAdmin = (req, res, next) => {
@@ -31,6 +32,9 @@ export const createCategory = [isAdmin, async (req, res) => {
             descricao,
             imagem_url: imagem_url ? `uploads/${imagem_url}` : null
         };
+
+        // 🔔 Notificar admins sobre nova categoria
+        await notifyNewCategory(nome);
 
         res.status(201).json(newCategory);
     } catch (error) {

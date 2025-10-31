@@ -3,6 +3,7 @@ import db from "../config/db.js";
 import fs from "fs";
 import path from "path";
 import slugify from "slugify";
+import { notifyNewEbook } from "../services/notificationService.js";
 
 const toAbs = (p) => (p ? (path.isAbsolute(p) ? p : path.join(process.cwd(), p)) : null);
 
@@ -94,6 +95,12 @@ export const createEbook = async (req, res) => {
     }
 
     await connection.commit();
+    
+    // 🔔 Notificar todos os usuários sobre o novo ebook (se publicado)
+    if (status === "publicado") {
+      await notifyNewEbook(ebookId, titulo, usuario_id);
+    }
+    
     res.status(201).json({ message: "Ebook criado com sucesso!", id: ebookId });
   } catch (error) {
     await connection.rollback();

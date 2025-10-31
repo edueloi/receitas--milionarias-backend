@@ -1,5 +1,6 @@
 // src/controllers/tagController.js
 import db from '../config/db.js';
+import { notifyNewTag } from '../services/notificationService.js';
 
 // Middleware de verificação de admin (a ser criado/usado no futuro)
 const isAdmin = (req, res, next) => {
@@ -16,6 +17,10 @@ export const createTag = [isAdmin, async (req, res) => {
         }
 
         const [result] = await db.query('INSERT INTO tags (nome) VALUES (?)', [nome]);
+        
+        // 🔔 Notificar admins sobre nova tag
+        await notifyNewTag(nome);
+        
         res.status(201).json({ id: result.insertId, nome });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {

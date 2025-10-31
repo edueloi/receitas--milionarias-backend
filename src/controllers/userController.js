@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import stripePackage from "stripe";
 import crypto from 'crypto';
+import { notifyNewUser, notifyNewAffiliate, notifyUserDeletion } from '../services/notificationService.js';
 
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 
@@ -91,6 +92,14 @@ export const registerUser = async (req, res) => {
         ];
 
         const [result] = await db.query(sql, values);
+
+        // 🔔 Notificar admin sobre novo usuário
+        await notifyNewUser(`${nome} ${sobrenome}`, email);
+
+        // 🔔 Notificar indicador se tiver código de afiliado
+        if (id_afiliado_indicador) {
+            await notifyNewAffiliate(`${nome} ${sobrenome}`, id_afiliado_indicador);
+        }
 
         res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: result.insertId });
     } catch (error) {
@@ -545,12 +554,23 @@ export const checkSubscriptions = async (req, res) => {
         if (expired_grace_period.length > 0) {
             const user_ids = expired_grace_period.map(user => user.id);
 
+            // Buscar info dos usuários antes de desativar
+            const [usersInfo] = await db.query(
+                'SELECT id, nome, sobrenome, email FROM usuarios WHERE id IN (?)',
+                [user_ids]
+            );
+
             await db.query(
                 'UPDATE usuarios SET id_status = 2 WHERE id IN (?)',
                 [user_ids]
             );
 
             console.log(`Usuários desativados após período de carência: ${user_ids.join(', ')}`);
+            
+            // 🔔 Notificar admin sobre usuários desativados
+            for (const user of usersInfo) {
+                await notifyUserDeletion(`${user.nome} ${user.sobrenome}`, user.email);
+            }
         }
 
         res.json({ message: 'Verificação de assinaturas concluída.' });

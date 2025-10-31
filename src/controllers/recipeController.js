@@ -1,6 +1,7 @@
 import db from "../config/db.js";
 import fs from "fs";
 import path from "path";
+import { notifyNewRecipe } from "../services/notificationService.js";
 
 export const createRecipe = async (req, res) => {
   const connection = await db.getConnection();
@@ -107,6 +108,12 @@ export const createRecipe = async (req, res) => {
     }
 
     await connection.commit();
+    
+    // 🔔 Notificar todos os usuários sobre a nova receita (exceto se status for "pendente")
+    if (status === "ativa" || status === "aprovada") {
+      await notifyNewRecipe(id_receita, titulo, id_usuario_criador);
+    }
+    
     res
       .status(201)
       .json({ message: "Receita criada com sucesso!", id: id_receita });

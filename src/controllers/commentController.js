@@ -1,5 +1,6 @@
 // src/controllers/commentController.js
 import db from '../config/db.js';
+import { notifyNewComment } from '../services/notificationService.js';
 
 // 🔸 Atualiza a média e quantidade de avaliações de uma receita específica
 const updateRecipeRatings = async (recipeId) => {
@@ -84,6 +85,28 @@ export const addComment = async (req, res) => {
     `, [recipeId, id_usuario, avaliacao, comentario, id_midia_anexo, id_comentario_pai]);
 
     await updateRecipeRatings(recipeId);
+
+    // 🔔 Notificar o criador da receita sobre o novo comentário
+    try {
+      const [recipeInfo] = await db.query(`
+        SELECT r.titulo, r.id_usuario_criador, u.nome, u.sobrenome
+        FROM receitas r
+        LEFT JOIN usuarios u ON u.id = ?
+        WHERE r.id = ?
+      `, [id_usuario, recipeId]);
+
+      if (recipeInfo.length > 0 && recipeInfo[0].id_usuario_criador !== id_usuario) {
+        const commentAuthorName = `${recipeInfo[0].nome} ${recipeInfo[0].sobrenome}`;
+        await notifyNewComment(
+          recipeId,
+          recipeInfo[0].titulo,
+          commentAuthorName,
+          recipeInfo[0].id_usuario_criador
+        );
+      }
+    } catch (notifError) {
+      console.error('⚠️ Erro ao enviar notificação de comentário:', notifError);
+    }
 
     res.status(201).json({ message: 'Comentário adicionado com sucesso!', id: result.insertId });
   } catch (error) {
