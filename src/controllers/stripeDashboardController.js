@@ -341,6 +341,90 @@ export const getStripeDashboardData = async (req, res) => {
     }));
 
     // ================================
+    // 📊 Dados para Gráficos - Receita ao longo do tempo
+    // ================================
+    const revenueByDate = new Map();
+    charges.forEach((c) => {
+      if (c.paid && !c.refunded) {
+        const date = new Date(c.created * 1000);
+        const dateKey = date.toISOString().split("T")[0]; // YYYY-MM-DD
+        const bt = c.balance_transaction;
+        const bruto = c.amount || 0;
+        const tarifa = bt?.fee ?? 0;
+        const liquido = bt?.net ?? bruto - tarifa;
+
+        if (!revenueByDate.has(dateKey)) {
+          revenueByDate.set(dateKey, { bruto: 0, tarifa: 0, liquido: 0, count: 0 });
+        }
+        const dayData = revenueByDate.get(dateKey);
+        dayData.bruto += bruto;
+        dayData.tarifa += tarifa;
+        dayData.liquido += liquido;
+        dayData.count += 1;
+      }
+    });
+
+    // Ordenar e formatar dados de receita
+    const sortedRevenueDates = Array.from(revenueByDate.keys()).sort();
+    const revenueOverTime = {
+      labels: sortedRevenueDates.map((d) => {
+        const date = new Date(d);
+        return `${date.getDate()}/${date.getMonth() + 1}`;
+      }),
+      bruto: sortedRevenueDates.map((d) => revenueByDate.get(d).bruto / 100), // Converter centavos para reais
+      tarifa: sortedRevenueDates.map((d) => revenueByDate.get(d).tarifa / 100),
+      liquido: sortedRevenueDates.map((d) => revenueByDate.get(d).liquido / 100),
+      transacoes: sortedRevenueDates.map((d) => revenueByDate.get(d).count),
+    };
+
+    // ================================
+    // 📊 Dados para Gráficos - Crescimento de Assinaturas
+    // ================================
+    const subsByDate = new Map();
+    subs.forEach((s) => {
+      const date = new Date(s.created * 1000);
+      const dateKey = date.toISOString().split("T")[0];
+      subsByDate.set(dateKey, (subsByDate.get(dateKey) || 0) + 1);
+    });
+
+    const sortedSubsDates = Array.from(subsByDate.keys()).sort();
+    let cumulativeSubs = 0;
+    const subscriptionsGrowth = {
+      labels: sortedSubsDates.map((d) => {
+        const date = new Date(d);
+        return `${date.getDate()}/${date.getMonth() + 1}`;
+      }),
+      data: sortedSubsDates.map((d) => {
+        cumulativeSubs += subsByDate.get(d);
+        return cumulativeSubs;
+      }),
+      novos: sortedSubsDates.map((d) => subsByDate.get(d)),
+    };
+
+    // ================================
+    // 📊 Dados para Gráficos - Crescimento de Usuários
+    // ================================
+    const customersByDate = new Map();
+    customers.forEach((c) => {
+      const date = new Date(c.created * 1000);
+      const dateKey = date.toISOString().split("T")[0];
+      customersByDate.set(dateKey, (customersByDate.get(dateKey) || 0) + 1);
+    });
+
+    const sortedCustomerDates = Array.from(customersByDate.keys()).sort();
+    let cumulativeCustomers = 0;
+    const userGrowthOverTime = {
+      labels: sortedCustomerDates.map((d) => {
+        const date = new Date(d);
+        return `${date.getDate()}/${date.getMonth() + 1}`;
+      }),
+      data: sortedCustomerDates.map((d) => {
+        cumulativeCustomers += customersByDate.get(d);
+        return cumulativeCustomers;
+      }),
+    };
+
+    // ================================
     // ✅ Retorno completo
     // ================================
     res.json({
@@ -361,7 +445,11 @@ export const getStripeDashboardData = async (req, res) => {
       afiliados: Object.fromEntries(afiliadosMap),
       ganhosPorAfiliado: Object.fromEntries(ganhosPorAfiliado),
       totalClientes: customers.length,
-      totalAssinaturas: subs.filter(s => s.status === 'active').length
+      totalAssinaturas: subs.filter((s) => s.status === "active").length,
+      // Novos dados para gráficos
+      revenueOverTime,
+      subscriptionsGrowth,
+      userGrowthOverTime,
     });
 
   } catch (error) {

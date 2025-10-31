@@ -118,6 +118,22 @@ export const onboardUser = async (req, res) => {
         const [rows] = await db.query('SELECT stripe_account_id, email FROM usuarios WHERE id = ?', [userId]);
         let accountId = rows[0]?.stripe_account_id;
 
+        // If there's an existing account ID, verify it's still valid
+        if (accountId) {
+            try {
+                await stripe.accounts.retrieve(accountId);
+            } catch (stripeError) {
+                // If the account is invalid or inaccessible, clear it and create a new one
+                if (stripeError.code === 'account_invalid' || stripeError.statusCode === 403) {
+                    console.warn(`Conta Stripe inválida (${accountId}). Criando nova conta para usuário ${userId}...`);
+                    accountId = null;
+                    await db.query('UPDATE usuarios SET stripe_account_id = NULL WHERE id = ?', [userId]);
+                } else {
+                    throw stripeError;
+                }
+            }
+        }
+
         if (!accountId) {
             const account = await stripe.accounts.create({
                 type: 'express',
@@ -157,21 +173,35 @@ export const getConnectedAccount = async (req, res) => {
         }
 
         // Retrieve account details from Stripe
-        const account = await stripe.accounts.retrieve(accountId);
+        try {
+            const account = await stripe.accounts.retrieve(accountId);
 
-        // Return a simplified view of the connected account
-        const safeAccount = {
-            id: account.id,
-            email: account.email || null,
-            business_type: account.business_type || null,
-            country: account.country || null,
-            capabilities: account.capabilities || {},
-            charges_enabled: account.charges_enabled || false,
-            payouts_enabled: account.payouts_enabled || false,
-            details_submitted: account.details_submitted || false,
-        };
+            // Return a simplified view of the connected account
+            const safeAccount = {
+                id: account.id,
+                email: account.email || null,
+                business_type: account.business_type || null,
+                country: account.country || null,
+                capabilities: account.capabilities || {},
+                charges_enabled: account.charges_enabled || false,
+                payouts_enabled: account.payouts_enabled || false,
+                details_submitted: account.details_submitted || false,
+            };
 
-        return res.json({ connected: true, account: safeAccount });
+            return res.json({ connected: true, account: safeAccount });
+        } catch (stripeError) {
+            // If the account doesn't exist or access was revoked, clear the invalid account ID
+            if (stripeError.code === 'account_invalid' || stripeError.statusCode === 403) {
+                console.warn(`Conta Stripe inválida ou inacessível (${accountId}) para usuário ${userId}. Limpando...`);
+                await db.query('UPDATE usuarios SET stripe_account_id = NULL WHERE id = ?', [userId]);
+                return res.json({ 
+                    connected: false, 
+                    message: 'Conta Stripe anterior não é mais válida. Por favor, conecte uma nova conta.' 
+                });
+            }
+            // Re-throw other Stripe errors
+            throw stripeError;
+        }
     } catch (error) {
         console.error('Erro ao buscar conta conectada do Stripe:', error);
         return res.status(500).json({ message: 'Erro ao buscar conta conectada do Stripe.', error: error.message });
