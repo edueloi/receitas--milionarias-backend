@@ -489,7 +489,7 @@ export const getAllRecipes = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 15;
+    const limit = parseInt(req.query.limit, 10) || 5000; // Aumentado para 1000
     const offset = (page - 1) * limit;
     const {
       search,
