@@ -10,6 +10,7 @@ import session from "express-session";
 
 import { updatePendingCommissions } from "./controllers/commissionController.js";
 import { handleWebhook } from "./controllers/stripeDashboardController.js";
+import { startNotificationCleanupJob } from "./jobs/notificationCleanupJob.js";
 
 // Rotas
 import userRoutes from "./routes/userRoutes.js";
@@ -154,6 +155,9 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📖 API docs: http://localhost:${PORT}/api-docs`);
+  
+  // Iniciar job de limpeza de notificações
+  startNotificationCleanupJob();
 });
 
 // -------------------- CRON --------------------
