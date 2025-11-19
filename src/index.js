@@ -35,6 +35,8 @@ import walletRoutes from "./routes/walletRoutes.js";
 import payoutRoutes from "./routes/payoutRoutes.js";
 import rolePermissionsRoutes from "./routes/rolePermissionsRoutes.js";
 import notificationsRoutes from "./routes/notifications.js";
+import lancamentoRoutes from "./routes/lancamentoRoutes.js";
+import cursosRoutes from "./routes/cursosRoutes.js";
 
 // Store de sessão em MySQL (produção)
 import MySQLStoreFactory from "express-mysql-session";
@@ -115,6 +117,8 @@ app.get("/test-index", (_req, res) => res.send("Index test route is working!"));
 console.log("Registrando rotas da API...");
 app.use(rolePermissionsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use(lancamentoRoutes);
+app.use("/api", cursosRoutes); // Rotas de cursos
 app.use(userRoutes);
 app.use(courseRoutes);
 app.use(categoryRoutes);
