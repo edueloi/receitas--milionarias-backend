@@ -8,6 +8,7 @@ import path from 'path';
 import stripePackage from "stripe";
 import crypto from 'crypto';
 import { notifyNewUser, notifyNewAffiliate, notifyUserDeletion } from '../services/notificationService.js';
+import { sendEmail } from '../services/emailService.js';
 
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 

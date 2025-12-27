@@ -281,7 +281,11 @@ async function handleCheckoutCompleted(session) {
  */
 export const handleStripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('Webhook secret nao configurado. Defina STRIPE_WEBHOOK_SECRET ou WEBHOOK_SECRET.');
+    return res.status(500).send('Webhook Error: missing secret');
+  }
   
   let event;
   
@@ -396,3 +400,5 @@ export const liberarComissoesPendentes = async () => {
     throw error;
   }
 };
+
+

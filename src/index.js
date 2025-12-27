@@ -9,7 +9,7 @@ import cron from "node-cron";
 import session from "express-session";
 
 import { updatePendingCommissions } from "./controllers/commissionController.js";
-import { handleWebhook } from "./controllers/stripeDashboardController.js";
+import { handleStripeWebhook } from "./controllers/stripeWebhookController.js";
 import { startNotificationCleanupJob } from "./jobs/notificationCleanupJob.js";
 
 // Rotas
@@ -35,7 +35,6 @@ import walletRoutes from "./routes/walletRoutes.js";
 import payoutRoutes from "./routes/payoutRoutes.js";
 import rolePermissionsRoutes from "./routes/rolePermissionsRoutes.js";
 import notificationsRoutes from "./routes/notifications.js";
-import lancamentoRoutes from "./routes/lancamentoRoutes.js";
 import cursosRoutes from "./routes/cursosRoutes.js";
 
 // Store de sessão em MySQL (produção)
@@ -73,7 +72,7 @@ app.use((req, res, next) => {
 app.post(
   "/stripe-webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook
+  handleStripeWebhook
 );
 
 app.use(express.json({ limit: '50mb' }));
@@ -117,7 +116,6 @@ app.get("/test-index", (_req, res) => res.send("Index test route is working!"));
 console.log("Registrando rotas da API...");
 app.use(rolePermissionsRoutes);
 app.use("/api/notifications", notificationsRoutes);
-app.use(lancamentoRoutes);
 app.use("/api", cursosRoutes); // Rotas de cursos
 app.use(userRoutes);
 app.use(courseRoutes);
@@ -173,3 +171,4 @@ cron.schedule(
   },
   { timezone: "America/Sao_Paulo" }
 );
+
