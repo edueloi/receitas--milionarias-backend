@@ -593,35 +593,108 @@ export const checkSubscriptions = async (req, res) => {
 
 // --- RECUPERAÇÃO DE SENHA ---
 // POST /api/users/forgot-password
+async function ensurePasswordResetsTable() {
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            token VARCHAR(255) NOT NULL,
+            data_criacao DATETIME NOT NULL,
+            data_expiracao DATETIME NULL,
+            INDEX idx_password_resets_email (email),
+            INDEX idx_password_resets_token (token)
+        )
+    `);
+
+    const [columns] = await db.query(
+        `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'password_resets'
+           AND COLUMN_NAME = 'data_criacao'`
+    );
+    if (columns.length === 0) {
+        await db.query(`ALTER TABLE password_resets ADD COLUMN data_criacao DATETIME NOT NULL`);
+    }
+
+    const [expColumns] = await db.query(
+        `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'password_resets'
+           AND COLUMN_NAME = 'data_expiracao'`
+    );
+    if (expColumns.length === 0) {
+        await db.query(`ALTER TABLE password_resets ADD COLUMN data_expiracao DATETIME NULL`);
+    }
+}
 export const forgotPassword = async (req, res) => {
     const { email } = req.body;
 
     try {
+        await ensurePasswordResetsTable();
         const [users] = await db.query('SELECT id FROM usuarios WHERE email = ?', [email]);
         if (users.length === 0) {
-            // Não revele que o usuário não existe
-            return res.json({ message: 'Se o email estiver registrado, um link de redefinição será enviado.' });
+            // Nao revele que o usuario nao existe
+            return res.json({ message: 'Se o email estiver registrado, um link de redefinicao sera enviado.' });
         }
 
         // Gerar token seguro
         const token = crypto.randomBytes(20).toString('hex');
         const data_expiracao = new Date(Date.now() + 3600000); // 1 hora a partir de agora
 
-        const sql = 'INSERT INTO password_resets (email, token, data_criacao) VALUES (?, ?, ?)';
-        await db.query(sql, [email, token, data_expiracao]);
+        await db.query('DELETE FROM password_resets WHERE email = ?', [email]);
+        const sql = 'INSERT INTO password_resets (email, token, data_criacao, data_expiracao) VALUES (?, ?, ?, ?)';
+        await db.query(sql, [email, token, data_expiracao, data_expiracao]);
 
-        // AQUI: Lógica para enviar o email com o token para o usuário
-        // Ex: await sendPasswordResetEmail(email, token);
-        console.log(`Token para ${email}: ${token}`); // Simulação do envio
+        const baseUrl =
+            process.env.RESET_PASSWORD_URL_BASE ||
+            process.env.FRONTEND_URL ||
+            process.env.APP_URL ||
+            "";
+        const resetLink = baseUrl
+            ? `${baseUrl.replace(/\/$/, "")}/authentication/reset-password?token=${token}`
+            : "";
 
-        res.json({ message: 'Se o email estiver registrado, um link de redefinição será enviado.' });
+        const html = `
+            <div style="font-family: Arial, sans-serif; background:#f6f7fb; padding:24px;">
+              <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; padding:24px; border:1px solid #e6e9f0;">
+                <div style="text-align:center; margin-bottom:16px;">
+                  <div style="font-size:18px; font-weight:700; color:#1C3B32; letter-spacing:0.5px;">
+                    RM - Receitas Milionarias
+                  </div>
+                </div>
+                <h2 style="margin:0 0 8px; color:#1C3B32;">Redefinir senha</h2>
+                <p style="margin:0 0 16px; color:#333;">Recebemos um pedido para redefinir sua senha.</p>
+                ${
+                  resetLink
+                    ? `<p style="margin:0 0 16px;">
+                         <a href="${resetLink}" style="display:inline-block; background:#1C3B32; color:#fff; text-decoration:none; padding:10px 16px; border-radius:8px; font-weight:700;">
+                           Redefinir senha
+                         </a>
+                       </p>
+                       <p style="margin:0 0 16px; color:#555; font-size:13px;">Se o botao nao abrir, copie e cole este link no navegador:</p>
+                       <p style="word-break:break-all; color:#555; font-size:12px; margin:0 0 16px;">${resetLink}</p>`
+                    : `<p style="margin:0 0 16px; color:#333;">Use este token para redefinir sua senha: <strong>${token}</strong></p>`
+                }
+                <p style="margin:0 0 8px; color:#777; font-size:13px;">Se voce nao solicitou, ignore este email.</p>
+                <p style="margin:0; color:#9aa0a6; font-size:12px;">Nao responda este email.</p>
+              </div>
+            </div>
+        `;
+
+        await sendEmail({
+            to: email,
+            subject: "Redefinir senha - Receitas Milionarias",
+            html,
+        });
+
+        res.json({ message: 'Se o email estiver registrado, um link de redefinicao sera enviado.' });
     } catch (error) {
-        console.error('Erro na recuperação de senha:', error);
+        console.error('Erro na recuperacao de senha:', error);
         res.status(500).json({ message: 'Erro interno no servidor.' });
     }
 };
-
-// POST /api/users/reset-password
 export const resetPassword = async (req, res) => {
     const { token, novaSenha } = req.body;
 
@@ -630,6 +703,7 @@ export const resetPassword = async (req, res) => {
     }
 
     try {
+        await ensurePasswordResetsTable();
         const sqlSelect = 'SELECT * FROM password_resets WHERE token = ? AND data_criacao > NOW()';
         const [resets] = await db.query(sqlSelect, [token]);
 
@@ -771,3 +845,5 @@ export const deleteUser = async (req, res) => {
         res.status(500).json({ message: 'Erro interno no servidor ao deletar usuário.' });
     }
 };
+
+

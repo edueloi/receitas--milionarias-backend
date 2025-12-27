@@ -1,6 +1,7 @@
 // src/controllers/stripeWebhookController.js
 import Stripe from 'stripe';
 import db from '../config/db.js';
+import { sendEmail } from '../services/emailService.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -213,7 +214,7 @@ async function handleCheckoutCompleted(session) {
       return;
     }
     
-    // Ativa o usuário (status 1 = Ativo)
+    // Ativa o usuario (status 1 = Ativo)
     await db.query(
       `UPDATE usuarios 
        SET id_status = 1,
@@ -228,6 +229,42 @@ async function handleCheckoutCompleted(session) {
       email: email,
       amount: amount_total / 100,
       sessionId
+    });
+
+    // Email de confirmacao e agradecimento
+    const loginUrl =
+      process.env.FRONTEND_URL
+        ? `${process.env.FRONTEND_URL.replace(/\/$/, "")}/authentication/sign-in`
+        : "";
+    const html = `
+      <div style="font-family: Arial, sans-serif; background:#f6f7fb; padding:24px;">
+        <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; padding:24px; border:1px solid #e6e9f0;">
+          <div style="text-align:center; margin-bottom:16px;">
+            <div style="font-size:18px; font-weight:700; color:#1C3B32; letter-spacing:0.5px;">
+              RM - Receitas Milionarias
+            </div>
+          </div>
+          <h2 style="margin:0 0 8px; color:#1C3B32;">Cadastro confirmado</h2>
+          <p style="margin:0 0 16px; color:#333;">Pagamento confirmado. Sua conta foi ativada com sucesso.</p>
+          ${
+            loginUrl
+              ? `<p style="margin:0 0 16px;">
+                   <a href="${loginUrl}" style="display:inline-block; background:#1C3B32; color:#fff; text-decoration:none; padding:10px 16px; border-radius:8px; font-weight:700;">
+                     Acessar sistema
+                   </a>
+                 </p>`
+              : ""
+          }
+          <p style="margin:0 0 8px; color:#777; font-size:13px;">Obrigado por se cadastrar.</p>
+          <p style="margin:0; color:#9aa0a6; font-size:12px;">Nao responda este email.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      to: email,
+      subject: "Cadastro confirmado - Receitas Milionarias",
+      html,
     });
     
     // Se tiver afiliado, registra comissão
