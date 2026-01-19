@@ -3,6 +3,38 @@ import fs from 'fs';
 import path from 'path';
 import { notifyNewCategory } from '../services/notificationService.js';
 
+const normalizeUploadUrl = (imagem_url) => {
+    if (!imagem_url) return null;
+
+    const raw = String(imagem_url).replace(/^[\\/]+/, '');
+    if (raw.startsWith('uploads/')) return raw;
+    if (raw.startsWith('images/')) return `uploads/${raw}`;
+
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const imagesPath = path.join(uploadsDir, 'images', raw);
+
+    if (fs.existsSync(imagesPath)) {
+        return `uploads/images/${raw}`;
+    }
+
+    return `uploads/${raw}`;
+};
+
+const resolveImagePath = (imagem_url) => {
+    if (!imagem_url) return null;
+
+    const raw = String(imagem_url).replace(/^[\\/]+/, '');
+    const cleaned = raw.startsWith('uploads/') ? raw.slice('uploads/'.length) : raw;
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const directPath = path.join(uploadsDir, cleaned);
+    const imagesPath = path.join(uploadsDir, 'images', cleaned);
+
+    if (fs.existsSync(directPath)) return directPath;
+    if (fs.existsSync(imagesPath)) return imagesPath;
+
+    return directPath;
+};
+
 // Middleware de verificação de admin (a ser criado/usado no futuro)
 const isAdmin = (req, res, next) => {
     // Lógica para verificar se req.user.role é admin
@@ -19,7 +51,8 @@ export const createCategory = [isAdmin, async (req, res) => {
         }
 
         // Assume que a tabela `categorias_receitas` tem uma coluna `imagem_url`
-        const imagem_url = req.file ? req.file.filename : null;
+        // Salva com subpasta "images" para bater com o destino do uploadMiddleware
+        const imagem_url = req.file ? `images/${req.file.filename}` : null;
 
         const [result] = await db.query(
             'INSERT INTO categorias_receitas (nome, descricao, imagem_url) VALUES (?, ?, ?)',
@@ -30,7 +63,7 @@ export const createCategory = [isAdmin, async (req, res) => {
             id: result.insertId,
             nome,
             descricao,
-            imagem_url: imagem_url ? `uploads/${imagem_url}` : null
+            imagem_url: normalizeUploadUrl(imagem_url)
         };
 
         // 🔔 Notificar admins sobre nova categoria
@@ -52,9 +85,7 @@ export const getAllCategories = async (req, res) => {
 
         const categoriesWithFullUrl = categories.map(category => ({
             ...category,
-            imagem_url: category.imagem_url
-                ? `uploads/${category.imagem_url}`
-                : null
+            imagem_url: normalizeUploadUrl(category.imagem_url)
         }));
 
         res.json(categoriesWithFullUrl);
@@ -78,7 +109,7 @@ export const updateCategory = [isAdmin, async (req, res) => {
 
         if (req.file) {
             query += ', imagem_url = ?';
-            params.push(req.file.filename);
+            params.push(`images/${req.file.filename}`);
         }
 
         query += ' WHERE id = ?';
@@ -117,8 +148,8 @@ export const deleteCategory = [isAdmin, async (req, res) => {
 
         // If there is an image, delete it from the filesystem
         if (imagem_url) {
-            const imagePath = path.join(process.cwd(), 'uploads', imagem_url);
-            if (fs.existsSync(imagePath)) {
+            const imagePath = resolveImagePath(imagem_url);
+            if (imagePath && fs.existsSync(imagePath)) {
                 fs.unlink(imagePath, (err) => {
                     if (err) {
                         // Log the error, but don't block the deletion of the category
