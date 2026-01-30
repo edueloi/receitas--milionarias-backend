@@ -181,15 +181,18 @@ export const retryStripeTransfers = async (req, res) => {
           c.id AS commission_id,
           c.valor AS commission_value,
           c.id_afiliado,
+          c.id_usuario_pagador,
           c.stripe_transfer_id,
           c.status,
           c.fonte,
-          p.stripe_payment_intent_id
+          p.id AS payment_id,
+          p.stripe_payment_intent_id,
+          p.stripe_charge_id
        FROM comissoes c
        JOIN pagamentos p ON c.id_pagamento_origem = p.id
-       WHERE c.fonte = 'stripe'
+       WHERE (c.fonte = 'stripe' OR c.fonte IS NULL)
          AND (c.stripe_transfer_id IS NULL OR c.stripe_transfer_id = '')
-         AND p.stripe_payment_intent_id IS NOT NULL
+         AND (p.stripe_payment_intent_id IS NOT NULL OR p.stripe_charge_id IS NOT NULL)
          AND c.valor > 0
        ORDER BY c.id DESC
        LIMIT ?`,
@@ -201,47 +204,129 @@ export const retryStripeTransfers = async (req, res) => {
     if (affiliateIds.length > 0) {
       const placeholders = affiliateIds.map(() => '?').join(',');
       const [users] = await db.query(
-        `SELECT id, stripe_account_id, email FROM usuarios WHERE id IN (${placeholders})`,
+        `SELECT id, stripe_account_id, email, id_status FROM usuarios WHERE id IN (${placeholders})`,
         affiliateIds
       );
       usersMap = new Map(users.map((row) => [row.id, row]));
+    }
+
+    const pagadorIds = rows.map((row) => row.id_usuario_pagador);
+    let pagadoresMap = new Map();
+    if (pagadorIds.length > 0) {
+      const placeholders = pagadorIds.map(() => '?').join(',');
+      const [users] = await db.query(
+        `SELECT id, email FROM usuarios WHERE id IN (${placeholders})`,
+        pagadorIds
+      );
+      pagadoresMap = new Map(users.map((row) => [row.id, row]));
     }
 
     let success = 0;
     let failed = 0;
     let skipped = 0;
     const errors = [];
+    const skippedDetails = [];
 
     for (const row of rows) {
       try {
         const user = usersMap.get(row.id_afiliado);
         if (!user?.stripe_account_id) {
           skipped += 1;
+          skippedDetails.push({ commission_id: row.commission_id, reason: 'missing_stripe_account' });
+          continue;
+        }
+
+        if (Number(user.id_status) !== 1) {
+          skipped += 1;
+          skippedDetails.push({ commission_id: row.commission_id, reason: 'affiliate_inactive' });
           continue;
         }
 
         const account = await stripe.accounts.retrieve(user.stripe_account_id);
         if (!account.payouts_enabled) {
           skipped += 1;
+          skippedDetails.push({ commission_id: row.commission_id, reason: 'payouts_disabled' });
           continue;
         }
 
-        const paymentIntentId = row.stripe_payment_intent_id;
-        const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
-        const amountCents = Math.round(Number(row.commission_value || 0) * 100);
-        const cappedCents = Math.min(amountCents, Number(pi.amount || 0));
+        let paymentIntentId = row.stripe_payment_intent_id;
+        let chargeId = row.stripe_charge_id || null;
+        let invoiceChargeId = null;
+        if (paymentIntentId && paymentIntentId.startsWith('invoice_')) {
+          const invoiceId = paymentIntentId.replace(/^invoice_/, '');
+          try {
+            const invoice = await stripe.invoices.retrieve(invoiceId);
+            paymentIntentId = invoice?.payment_intent || null;
+            invoiceChargeId = invoice?.charge || null;
+          } catch (invErr) {
+            skipped += 1;
+            skippedDetails.push({ commission_id: row.commission_id, reason: 'invoice_not_found' });
+            continue;
+          }
+        }
 
-        let chargeId = pi.latest_charge;
-        if (!chargeId) {
+        if (!paymentIntentId && !chargeId) {
+          const pagador = pagadoresMap.get(row.id_usuario_pagador);
+          if (pagador?.email) {
+            try {
+              const customers = await stripe.customers.list({ email: pagador.email, limit: 1 });
+              const customerId = customers?.data?.[0]?.id;
+              if (customerId) {
+                const charges = await stripe.charges.list({ customer: customerId, limit: 20 });
+                const paid = (charges?.data || []).filter(
+                  (ch) => ch.paid && ch.status === 'succeeded' && Number(ch.amount || 0) > 0
+                );
+                if (paid.length > 0) {
+                  paid.sort((a, b) => (b.created || 0) - (a.created || 0));
+                  const latest = paid[0];
+                  chargeId = latest.id || chargeId;
+                  paymentIntentId = latest.payment_intent || paymentIntentId;
+                  if (row.payment_id) {
+                    await run(
+                      'UPDATE pagamentos SET stripe_payment_intent_id = ?, stripe_charge_id = ? WHERE id = ?',
+                      [paymentIntentId || null, chargeId || null, row.payment_id]
+                    );
+                  }
+                }
+              }
+            } catch (lookupErr) {
+              console.error('Erro ao buscar charge por email:', lookupErr?.message || lookupErr);
+            }
+          }
+        }
+
+        if (!paymentIntentId && !chargeId) {
+          skipped += 1;
+          skippedDetails.push({ commission_id: row.commission_id, reason: 'missing_payment_intent' });
+          continue;
+        }
+
+        const amountCents = Math.round(Number(row.commission_value || 0) * 100);
+        let cappedCents = amountCents;
+
+        if (paymentIntentId && paymentIntentId.startsWith("pi_")) {
+          const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+          cappedCents = Math.min(amountCents, Number(pi.amount || 0));
+          if (!chargeId) {
+            chargeId = pi.latest_charge || null;
+          }
+        }
+
+        if (!chargeId && paymentIntentId && paymentIntentId.startsWith("pi_")) {
           const charges = await stripe.charges.list({
             payment_intent: paymentIntentId,
             limit: 1,
           });
-          chargeId = charges?.data?.[0]?.id;
+          chargeId = charges?.data?.[0]?.id || null;
+        }
+
+        if (!chargeId && invoiceChargeId) {
+          chargeId = invoiceChargeId;
         }
 
         if (!chargeId || cappedCents <= 0) {
           skipped += 1;
+          skippedDetails.push({ commission_id: row.commission_id, reason: 'missing_charge_or_amount' });
           continue;
         }
 
@@ -275,6 +360,7 @@ export const retryStripeTransfers = async (req, res) => {
       success,
       failed,
       skipped,
+      skipped_details: skippedDetails,
       errors,
     });
   } catch (error) {

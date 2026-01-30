@@ -54,9 +54,16 @@ const initCommissionPaymentsDb = async () => {
       fonte TEXT,
       stripe_payment_intent_id TEXT,
       stripe_checkout_session_id TEXT,
+      stripe_charge_id TEXT,
       metadata_json TEXT
     )
   `);
+
+  const pagamentosColumns = await all("PRAGMA table_info(pagamentos)");
+  const pagamentosColNames = new Set(pagamentosColumns.map((c) => c.name));
+  if (!pagamentosColNames.has("stripe_charge_id")) {
+    await run("ALTER TABLE pagamentos ADD COLUMN stripe_charge_id TEXT");
+  }
 
   await run(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_pagamentos_stripe_pi ON pagamentos(stripe_payment_intent_id)"
