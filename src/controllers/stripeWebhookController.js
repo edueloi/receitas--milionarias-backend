@@ -8,6 +8,37 @@ import { all, get, run } from '../config/commissionPaymentsDb.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resolveRoleName = (permissionId) => PERMISSION_ROLE_MAP[permissionId] || "afiliado";
 
+const activateUserByEmail = async (email, reason) => {
+  if (!email) return false;
+
+  const [users] = await db.query(
+    'SELECT id, id_status FROM usuarios WHERE LOWER(email) = LOWER(?)',
+    [email]
+  );
+
+  if (users.length === 0) {
+    console.log('⚠️ Usuário não encontrado para ativação:', email);
+    return false;
+  }
+
+  const user = users[0];
+  if (user.id_status === 1) {
+    return true;
+  }
+
+  await db.query(
+    `UPDATE usuarios 
+     SET id_status = 1,
+         data_expiracao_assinatura = DATE_ADD(NOW(), INTERVAL 30 DAY),
+         data_expiracao_carencia = NULL
+     WHERE id = ?`,
+    [user.id]
+  );
+
+  console.log('✅ Usuário ativado por pagamento:', { email, reason });
+  return true;
+};
+
 /**
  * Processa o pagamento bem-sucedido e cria comissão para o afiliado
  */
@@ -64,6 +95,9 @@ async function handleSuccessfulPayment(paymentIntent) {
     );
     const pagamentoId = paymentResult.lastID;
     console.log('✅ Pagamento registrado:', pagamentoId);
+
+    // 3b. Ativar usuário após pagamento confirmado
+    await activateUserByEmail(email, `payment_intent:${paymentIntentId}`);
 
     // 4. Buscar informações do usuário pagador
     const [userInfo] = await db.query(
@@ -320,13 +354,7 @@ async function handleCheckoutCompleted(session) {
     }
     
     // Ativa o usuario (status 1 = Ativo)
-    await db.query(
-      `UPDATE usuarios 
-       SET id_status = 1,
-           data_expiracao_assinatura = DATE_ADD(NOW(), INTERVAL 365 DAY)
-       WHERE id = ?`,
-      [user.id]
-    );
+    await activateUserByEmail(email, `checkout_session:${sessionId}`);
     
     console.log('✅ Usuário ativado com sucesso:', {
       userId: user.id,
@@ -518,6 +546,7 @@ async function handleInvoicePaid(invoice) {
       },
     };
 
+    await activateUserByEmail(email, `invoice_paid:${invoice.id}`);
     await handleSuccessfulPayment(paymentIntent);
   } catch (error) {
     console.error('❌ Erro ao processar invoice.paid:', error);

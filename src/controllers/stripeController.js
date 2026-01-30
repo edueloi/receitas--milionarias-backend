@@ -5,10 +5,11 @@ import { getCommissionSettingsForRole, PERMISSION_ROLE_MAP } from '../config/com
 
 const resolveRoleName = (permissionId) => PERMISSION_ROLE_MAP[permissionId] || "afiliado";
 
-// ✅ Inicializa Stripe com a versão mais recente da API
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-10-29.clover', // Versão mais recente do Stripe
-});
+// Evita chamadas duplicadas de onboarding no mesmo processo
+const onboardingLocks = new Map();
+
+// ✅ Inicializa Stripe (use versão default da lib durante testes)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const getStripeBalance = async (req, res) => {
     try {
@@ -149,8 +150,18 @@ export const createCheckoutSession = async (req, res) => {
 };
 
 export const onboardUser = async (req, res) => {
+    const userId = req.user?.id;
     try {
-        const userId = req.user.id;
+        if (!userId) {
+            return res.status(401).json({ message: 'Acesso negado. Usuário não autenticado.' });
+        }
+
+        if (onboardingLocks.has(userId)) {
+            return res.status(429).json({
+                message: 'Onboarding já em andamento para este usuário. Aguarde alguns segundos e tente novamente.'
+            });
+        }
+        onboardingLocks.set(userId, true);
         const [rows] = await db.query(
             `SELECT 
                 stripe_account_id, 
@@ -183,38 +194,12 @@ export const onboardUser = async (req, res) => {
             }
         }
 
-        // Se não há accountId no banco, tentar encontrar conta já existente no Stripe
-        if (!accountId) {
-            try {
-                const accounts = await stripe.accounts.list({ limit: 100 });
-                const matches = (accounts?.data || []).filter((acct) => {
-                    if (acct?.metadata?.user_id === String(userId)) return true;
-                    if (userData?.email && acct?.email === userData.email) return true;
-                    return false;
-                });
-
-                if (matches.length > 0) {
-                    // Prioriza conta já completa/ativa
-                    const preferred =
-                        matches.find((acct) => acct.details_submitted && acct.payouts_enabled) ||
-                        matches.find((acct) => acct.details_submitted) ||
-                        matches[0];
-
-                    accountId = preferred.id;
-                    await db.query('UPDATE usuarios SET stripe_account_id = ? WHERE id = ?', [accountId, userId]);
-                    console.log('✅ Conta Stripe existente vinculada:', {
-                        accountId,
-                        userId,
-                        email: userData?.email,
-                    });
-                }
-            } catch (listError) {
-                console.warn('⚠️ Nao foi possivel listar contas Stripe para reaproveitar:', listError?.message || listError);
-            }
-        }
+        // Se não há accountId no banco, cria conta nova (evita reaproveitar conta errada)
 
         const createNewAccount = async () => {
+            const minimalMode = process.env.STRIPE_CONNECT_MINIMAL === 'true';
             const isDev = process.env.NODE_ENV === 'development';
+            const useMinimal = minimalMode || isDev;
             const baseAccount = {
                 // ✅ País da conta (Brasil)
                 country: 'BR',
@@ -237,7 +222,7 @@ export const onboardUser = async (req, res) => {
             };
 
             // Em dev/teste, cria conta "mínima" (sem business_type/individual) para reduzir requisitos de KYC.
-            const accountParams = isDev
+            const accountParams = useMinimal
                 ? {
                     type: 'express',
                     ...baseAccount
@@ -267,7 +252,9 @@ export const onboardUser = async (req, res) => {
                     ...baseAccount
                 };
 
-            const account = await stripe.accounts.create(accountParams);
+            const account = await stripe.accounts.create(accountParams, {
+                idempotencyKey: `acct_create_user_${userId}`
+            });
             
             accountId = account.id;
             
@@ -333,6 +320,8 @@ export const onboardUser = async (req, res) => {
     } catch (error) {
         console.error('❌ Erro ao criar conta Stripe Connect:', error);
         res.status(500).json({ message: 'Erro ao criar conta Stripe Connect.', error: error.message });
+    } finally {
+        if (userId) onboardingLocks.delete(userId);
     }
 };
 

@@ -86,6 +86,12 @@ app.post(
   express.raw({ type: "*/*" }),
   handleStripeWebhook
 );
+// Alias para evitar confusão com /stripe/webhook
+app.post(
+  "/stripe/webhook",
+  express.raw({ type: "*/*" }),
+  handleStripeWebhook
+);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
