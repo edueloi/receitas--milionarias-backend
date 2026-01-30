@@ -34,6 +34,7 @@
     "pdfkit": "^0.15.2",
     "pngjs": "^7.0.0",
     "slugify": "^1.6.6",
+    "sqlite3": "^5.1.7",
     "stripe": "^19.2.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

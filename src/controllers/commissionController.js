@@ -1,4 +1,29 @@
 import db from '../config/db.js';
+import { all, get, run } from '../config/commissionPaymentsDb.js';
+
+const fetchUsersByIds = async (ids) => {
+  const uniqueIds = Array.from(new Set((ids || []).filter(Boolean)));
+  if (uniqueIds.length === 0) return new Map();
+
+  const placeholders = uniqueIds.map(() => '?').join(',');
+  const [rows] = await db.query(
+    `SELECT id, nome, email, codigo_afiliado_proprio, id_status FROM usuarios WHERE id IN (${placeholders})`,
+    uniqueIds
+  );
+  return new Map(rows.map((row) => [row.id, row]));
+};
+
+const fetchPaymentsByIds = async (ids) => {
+  const uniqueIds = Array.from(new Set((ids || []).filter(Boolean)));
+  if (uniqueIds.length === 0) return new Map();
+
+  const placeholders = uniqueIds.map(() => '?').join(',');
+  const payments = await all(
+    `SELECT id, stripe_payment_intent_id, valor FROM pagamentos WHERE id IN (${placeholders})`,
+    uniqueIds
+  );
+  return new Map(payments.map((row) => [row.id, row]));
+};
 
 // Histórico de comissões + saldos
 export const getCommissions = async (req, res) => {
@@ -8,43 +33,46 @@ export const getCommissions = async (req, res) => {
   console.log("User role:", req.user.role);
 
   try {
-    let commissions;
+    let commissions = [];
     if (req.user.role === 1) {
-      // Admin vê todas as comissões
-      [commissions] = await db.query(
-        `SELECT 
-          c.*,
-          u_pagador.nome as nome_pagador,
-          u_pagador.email as email_pagador,
-          u_afiliado.nome as nome_afiliado,
-          u_afiliado.email as email_afiliado,
-          u_afiliado.codigo_afiliado_proprio as codigo_afiliado,
-          p.stripe_payment_intent_id,
-          p.valor as valor_pagamento_total
-         FROM comissoes c
-         JOIN usuarios u_pagador ON c.id_usuario_pagador = u_pagador.id
-         JOIN usuarios u_afiliado ON c.id_afiliado = u_afiliado.id
-         LEFT JOIN pagamentos p ON c.id_pagamento_origem = p.id
-         ORDER BY c.data_criacao DESC
+      commissions = await all(
+        `SELECT *
+         FROM comissoes
+         ORDER BY datetime(data_criacao) DESC
          LIMIT 1000`
       );
     } else {
-      // Afiliado vê apenas suas comissões
-      [commissions] = await db.query(
-        `SELECT 
-          c.*,
-          u.nome as nome_pagador,
-          u.email as email_pagador,
-          p.stripe_payment_intent_id,
-          p.valor as valor_pagamento_total
-         FROM comissoes c
-         JOIN usuarios u ON c.id_usuario_pagador = u.id
-         LEFT JOIN pagamentos p ON c.id_pagamento_origem = p.id
-         WHERE c.id_afiliado = ?
-         ORDER BY c.data_criacao DESC`,
+      commissions = await all(
+        `SELECT *
+         FROM comissoes
+         WHERE id_afiliado = ?
+         ORDER BY datetime(data_criacao) DESC`,
         [affiliateId]
       );
     }
+
+    const pagadorIds = commissions.map((item) => item.id_usuario_pagador);
+    const afiliadoIds = commissions.map((item) => item.id_afiliado);
+    const pagamentoIds = commissions.map((item) => item.id_pagamento_origem);
+
+    const usersMap = await fetchUsersByIds([...pagadorIds, ...afiliadoIds]);
+    const paymentsMap = await fetchPaymentsByIds(pagamentoIds);
+
+    commissions = commissions.map((commission) => {
+      const pagador = usersMap.get(commission.id_usuario_pagador);
+      const afiliado = usersMap.get(commission.id_afiliado);
+      const pagamento = paymentsMap.get(commission.id_pagamento_origem);
+      return {
+        ...commission,
+        nome_pagador: pagador?.nome || null,
+        email_pagador: pagador?.email || null,
+        nome_afiliado: afiliado?.nome || null,
+        email_afiliado: afiliado?.email || null,
+        codigo_afiliado: afiliado?.codigo_afiliado_proprio || null,
+        stripe_payment_intent_id: pagamento?.stripe_payment_intent_id || null,
+        valor_pagamento_total: pagamento?.valor ?? null,
+      };
+    });
 
     const balances = await calculateBalances(req.user);
 
@@ -94,9 +122,8 @@ export const getCommissionsSummary = async (req, res) => {
       params = [affiliateId];
     }
 
-    const [summary] = await db.query(query, params);
-
-    return res.json(summary[0]);
+    const summary = await get(query, params);
+    return res.json(summary || {});
   } catch (error) {
     console.error('Erro ao buscar resumo de comissões:', error);
     return res.status(500).json({ error: 'Erro interno ao buscar resumo.' });
@@ -106,14 +133,22 @@ export const getCommissionsSummary = async (req, res) => {
 // Atualiza comissões pendentes para 'disponivel' quando chegar a data_liberacao
 export const updatePendingCommissions = async () => {
   try {
-    const [result] = await db.query(
-      `UPDATE comissoes
-       SET status = 'disponivel'
+    const result = await get(
+      `SELECT COUNT(*) as total
+       FROM comissoes
        WHERE status = 'pendente'
-       AND data_liberacao <= NOW()`
+       AND date(data_liberacao) <= date('now')`
     );
-    console.log(`${result.affectedRows} comissões foram atualizadas para 'disponivel'.`);
-    return result.affectedRows;
+    await run(
+      `UPDATE comissoes
+       SET status = 'disponivel',
+           data_atualizacao = CURRENT_TIMESTAMP
+       WHERE status = 'pendente'
+       AND date(data_liberacao) <= date('now')`
+    );
+    const updated = Number(result?.total || 0);
+    console.log(`${updated} comissões foram atualizadas para 'disponivel'.`);
+    return updated;
   } catch (error) {
     console.error('Erro ao atualizar comissões pendentes:', error);
     throw error;
@@ -124,17 +159,17 @@ export const updatePendingCommissions = async () => {
 const calculateBalances = async (user) => {
   if (user.role === 1) {
     // Admin vê saldos totais do sistema
-    const [rows] = await db.query(
+    const rows = await get(
       `SELECT 
           COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END), 0) AS saldo_pendente,
           COALESCE(SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END), 0) AS saldo_disponivel,
           COALESCE(SUM(CASE WHEN status = 'paga' THEN valor ELSE 0 END), 0) AS total_pago
        FROM comissoes`
     );
-    return rows[0];
+    return rows || {};
   } else {
     // Usuário comum vê apenas seus saldos
-    const [rows] = await db.query(
+    const rows = await get(
       `SELECT 
           COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END), 0) AS saldo_pendente,
           COALESCE(SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END), 0) AS saldo_disponivel,
@@ -143,7 +178,7 @@ const calculateBalances = async (user) => {
        WHERE id_afiliado = ?`,
       [user.id]
     );
-    return rows[0];
+    return rows || {};
   }
 };
 
@@ -162,18 +197,42 @@ export const getMyReferrals = async (req, res) => {
         u.data_criacao as data_cadastro,
         u.id_status,
         s.nome as status,
-        COALESCE(SUM(c.valor), 0) as total_comissoes,
-        COUNT(c.id) as quantidade_comissoes
        FROM usuarios u
-       LEFT JOIN comissoes c ON c.id_usuario_pagador = u.id AND c.id_afiliado = ?
        LEFT JOIN status_usuarios s ON u.id_status = s.id
        WHERE u.id_afiliado_indicador = ?
-       GROUP BY u.id
        ORDER BY u.data_criacao DESC`,
-      [affiliateId, affiliateId]
+      [affiliateId]
     );
 
-    return res.json(referrals);
+    const referralIds = referrals.map((item) => item.id);
+    const totalsMap = new Map();
+
+    if (referralIds.length > 0) {
+      const placeholders = referralIds.map(() => '?').join(',');
+      const totals = await all(
+        `SELECT 
+          id_usuario_pagador,
+          COALESCE(SUM(valor), 0) as total_comissoes,
+          COUNT(id) as quantidade_comissoes
+         FROM comissoes
+         WHERE id_afiliado = ?
+           AND id_usuario_pagador IN (${placeholders})
+         GROUP BY id_usuario_pagador`,
+        [affiliateId, ...referralIds]
+      );
+      totals.forEach((row) => totalsMap.set(row.id_usuario_pagador, row));
+    }
+
+    const response = referrals.map((ref) => {
+      const totals = totalsMap.get(ref.id) || {};
+      return {
+        ...ref,
+        total_comissoes: totals.total_comissoes || 0,
+        quantidade_comissoes: totals.quantidade_comissoes || 0,
+      };
+    });
+
+    return res.json(response);
   } catch (error) {
     console.error('Erro ao buscar indicações:', error);
     return res.status(500).json({ error: 'Erro interno ao buscar indicações.' });

@@ -1,5 +1,9 @@
 import { MercadoPagoConfig, PreApproval, Payment } from "mercadopago";
 import db from "../config/db.js";
+import { getCommissionSettingsForRole, PERMISSION_ROLE_MAP } from "../config/commissionSettingsDb.js";
+import { get, run } from "../config/commissionPaymentsDb.js";
+
+const resolveRoleName = (permissionId) => PERMISSION_ROLE_MAP[permissionId] || "afiliado";
 
 const PLAN_ID = process.env.MERCADOPAGO_PLAN_ID;
 
@@ -89,78 +93,111 @@ export const handleWebhook = async (req, res) => {
         const userId = parseInt(paymentInfo.external_reference, 10);
 
         // Evita duplicidade
-        const [existing] = await db.query(
+        const existing = await get(
           "SELECT id FROM pagamentos WHERE id_pagamento_gateway = ?",
           [paymentInfo.id]
         );
-        if (existing.length > 0) {
+        if (existing?.id) {
           return res.status(200).send("Pagamento já processado.");
         }
 
-        const connection = await db.getConnection();
-        await connection.beginTransaction();
         try {
           // Registra pagamento
-          const [paymentResult] = await connection.query(
+          const paymentResult = await run(
             `INSERT INTO pagamentos 
               (id_usuario, id_pagamento_gateway, valor, status, metodo_pagamento, data_pagamento)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, datetime('now'))`,
             [
               userId,
               paymentInfo.id,
               paymentInfo.transaction_amount ?? 0,
               "aprovado",
               paymentInfo.payment_type_id ?? null,
-              new Date(),
             ]
           );
-          const paymentOriginId = paymentResult.insertId;
+          const paymentOriginId = paymentResult.lastID;
 
           // Atualiza assinatura do usuário (30 dias)
           const expirationDate = new Date();
           expirationDate.setDate(expirationDate.getDate() + 30);
-          await connection.query(
+          await db.query(
             "UPDATE usuarios SET id_status = ?, data_expiracao_assinatura = ? WHERE id = ?",
             [1, expirationDate, userId]
           );
-
           // Comissão do afiliado (se houver)
-          const [userRows] = await connection.query(
+          const [userRows] = await db.query(
             "SELECT id_afiliado_indicador FROM usuarios WHERE id = ?",
             [userId]
           );
           const affiliateId = userRows?.[0]?.id_afiliado_indicador;
 
           if (affiliateId) {
-            const commissionValue = 9.9;
-            const releaseDate = new Date();
-            releaseDate.setDate(releaseDate.getDate() + 45);
-
-            await connection.query(
-              `INSERT INTO comissoes 
-                (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, data_liberacao)
-               VALUES (?, ?, ?, ?, ?, ?)`,
-              [
-                affiliateId,
-                userId,
-                paymentOriginId,
-                commissionValue,
-                "pendente",
-                releaseDate,
-              ]
+            const [affiliateRows] = await db.query(
+              "SELECT id, id_permissao, id_status, id_afiliado_indicador FROM usuarios WHERE id = ?",
+              [affiliateId]
             );
+            const affiliate = affiliateRows?.[0];
+            if (affiliate) {
+              const affiliateRole = resolveRoleName(affiliate.id_permissao);
+              const affiliateSettings = await getCommissionSettingsForRole(affiliateRole);
+              const level1Cents = Math.max(0, Number(affiliateSettings.level1_cents || 0));
+              if (level1Cents > 0) {
+                const commissionValue = level1Cents / 100;
+                const releaseDate = new Date();
+                releaseDate.setDate(releaseDate.getDate() + 45);
+                const releaseDateStr = releaseDate.toISOString().split('T')[0];
+
+                await run(
+                  `INSERT INTO comissoes 
+                    (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, data_liberacao)
+                   VALUES (?, ?, ?, ?, ?, ?)`,
+                  [
+                    affiliateId,
+                    userId,
+                    paymentOriginId,
+                    commissionValue,
+                    "pendente",
+                    releaseDateStr,
+                  ]
+                );
+
+                const parentAffiliateId = affiliate.id_afiliado_indicador;
+                if (parentAffiliateId) {
+                  const [parentRows] = await db.query(
+                    "SELECT id, id_permissao, id_status FROM usuarios WHERE id = ?",
+                    [parentAffiliateId]
+                  );
+                  const parent = parentRows?.[0];
+                  if (parent) {
+                    const parentRole = resolveRoleName(parent.id_permissao);
+                    const parentSettings = await getCommissionSettingsForRole(parentRole);
+                    const secondEnabled = Number(parentSettings.level2_enabled) === 1;
+                    const secondCents = Math.max(0, Number(parentSettings.level2_cents || 0));
+                    if (parentRole === "afiliado pro" && parent.id_status === 1 && secondEnabled && secondCents > 0) {
+                      const secondValue = secondCents / 100;
+                      await run(
+                        `INSERT INTO comissoes 
+                          (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, data_liberacao)
+                         VALUES (?, ?, ?, ?, ?, ?)`,
+                        [
+                          parent.id,
+                          userId,
+                          paymentOriginId,
+                          secondValue,
+                          "pendente",
+                          releaseDateStr,
+                        ]
+                      );
+                    }
+                  }
+                }
+              }
+            }
           }
 
-          await connection.commit();
         } catch (trxErr) {
-          await connection.rollback();
           console.error("Erro na transação do webhook de pagamento:", trxErr);
           return res.status(500).send("Erro interno ao processar o pagamento.");
-        } finally {
-          // só libera se a connection existir (proteção)
-          try {
-            await connection.release();
-          } catch {}
         }
       }
 
@@ -179,3 +216,4 @@ export const handleWebhook = async (req, res) => {
     return res.status(500).send("Erro ao processar webhook");
   }
 };
+

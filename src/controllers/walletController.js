@@ -1,6 +1,7 @@
 // src/controllers/walletController.js
 import Stripe from 'stripe';
 import db from '../config/db.js';
+import { get } from '../config/commissionPaymentsDb.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -82,21 +83,16 @@ export const getUserBalances = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const [rows] = await db.query(
-      'SELECT saldo_disponivel, saldo_pendente FROM usuarios WHERE id = ?',
+    const balances = await get(
+      `SELECT 
+        COALESCE(SUM(CASE WHEN status = 'disponivel' THEN valor ELSE 0 END), 0) AS saldo_disponivel,
+        COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END), 0) AS saldo_pendente
+       FROM comissoes
+       WHERE id_afiliado = ?`,
       [userId]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ message: 'Usuário não encontrado.' });
-    }
-
-    const balances = {
-      saldo_disponivel: rows[0].saldo_disponivel || 0,
-      saldo_pendente: rows[0].saldo_pendente || 0,
-    };
-
-    res.json(balances);
+    res.json(balances || { saldo_disponivel: 0, saldo_pendente: 0 });
   } catch (error) {
     console.error('Erro ao buscar saldos do usuário:', error);
     res.status(500).json({ message: 'Erro interno do servidor ao buscar saldos.' });

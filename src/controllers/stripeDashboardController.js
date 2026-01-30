@@ -54,6 +54,7 @@ export const logout = (req, res) => {
 
 export const getStripeDashboardData = async (req, res) => {
   try {
+    const isAdmin = req.user && (req.user.role === 1 || req.user.role === 'admin' || req.user.role === '1');
     const range = (req.query.range || "7d").toLowerCase();
     const now = Math.floor(Date.now() / 1000);
 
@@ -69,11 +70,23 @@ export const getStripeDashboardData = async (req, res) => {
     else if (range === "30d") gte = now - 30 * 24 * 3600;
     else gte = undefined; // all
 
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const startOfMonthTs = Math.floor(startOfMonth.getTime() / 1000);
+
     const chargesParams = {
       limit: 100,
       expand: ["data.balance_transaction", "data.payment_intent"],
     };
     if (gte) chargesParams.created = { gte };
+
+    const transfersParams = { limit: 100 };
+    if (isAdmin) {
+      if (gte) transfersParams.created = { gte };
+    } else {
+      transfersParams.created = { gte: startOfMonthTs };
+    }
 
     // ================================
     // 🔄 Requisições principais Stripe (padrão: dados da plataforma)
@@ -83,7 +96,7 @@ export const getStripeDashboardData = async (req, res) => {
         stripe.customers.list({ limit: 100 }),
         stripe.subscriptions.list({ limit: 100, expand: ["data.latest_invoice"] }),
         stripe.charges.list(chargesParams),
-        stripe.transfers.list({ limit: 100 }),
+        stripe.transfers.list(transfersParams),
         stripe.balance.retrieve(),
         stripe.payouts.list({ limit: 5 }),
       ]);
@@ -96,11 +109,11 @@ export const getStripeDashboardData = async (req, res) => {
     // Se a requisição veio de um usuário autenticado que NÃO é admin,
     // precisamos filtrar os dados para retornar apenas o que diz respeito
     // à conta Stripe conectada desse usuário.
-    const isAdmin = req.user && (req.user.role === 1 || req.user.role === 'admin' || req.user.role === '1');
     if (req.user && !isAdmin) {
       // Buscar stripe_account_id no banco
-      const [rows] = await db.query('SELECT stripe_account_id FROM usuarios WHERE id = ?', [req.user.id]);
+      const [rows] = await db.query('SELECT stripe_account_id, email FROM usuarios WHERE id = ?', [req.user.id]);
       const accountId = rows[0]?.stripe_account_id;
+      const userEmail = rows[0]?.email;
 
       if (!accountId) {
         // Usuário não conectou Stripe — retornar payload reduzido (sem dados do Stripe)
@@ -122,8 +135,42 @@ export const getStripeDashboardData = async (req, res) => {
         });
       }
 
-      // Filtrar transfers que tem destino nessa account
-      transfers = transfers.filter((t) => t.destination === accountId);
+      let accountEmail = null;
+      try {
+        const account = await stripe.accounts.retrieve(accountId);
+        accountEmail = account?.email || null;
+      } catch (err) {
+        console.warn('NÃ£o foi possÃ­vel recuperar conta Stripe conectada:', err.message || err);
+      }
+
+      if (
+        accountEmail &&
+        userEmail &&
+        accountEmail.toLowerCase() !== userEmail.toLowerCase()
+      ) {
+        return res.json({
+          period: range,
+          customers: [],
+          subscriptions: [],
+          pagamentos: [],
+          total: { bruto: 0, tarifa: 0, liquido: 0 },
+          transfers: [],
+          totalTransferencias: 0,
+          balance: { availableBrl: 0, pendingBrl: 0 },
+          proximosVencimentos: [],
+          proximosRepasses: [],
+          afiliados: {},
+          ganhosPorAfiliado: {},
+          totalClientes: 0,
+          totalAssinaturas: 0,
+          emailMismatch: true,
+        });
+      }
+
+      // Filtrar transfers que tem destino nessa account (e somente o mÃªs atual)
+      transfers = transfers.filter(
+        (t) => t.destination === accountId && (!t.created || t.created >= startOfMonthTs)
+      );
 
       // Calcular totais apenas a partir das transferências para essa conta
       const totalTransferenciasFiltered = transfers.reduce((sum, t) => sum + (t.amount || 0), 0);

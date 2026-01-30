@@ -2,7 +2,13 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { adminMiddleware } from '../middleware/adminMiddleware.js';
-import { releasePendingBalance, listWithdrawalRequests, processWithdrawalRequest } from '../controllers/adminController.js';
+import {
+  releasePendingBalance,
+  listWithdrawalRequests,
+  processWithdrawalRequest,
+  retryStripeTransfers,
+  resetStripeConnectAccount,
+} from '../controllers/adminController.js';
 
 const router = express.Router();
 
@@ -114,5 +120,30 @@ router.get('/admin/withdrawals', authMiddleware, adminMiddleware, listWithdrawal
  *         description: Solicitação de saque não encontrada.
  */
 router.post('/admin/withdrawals/:withdrawalId/process', authMiddleware, adminMiddleware, processWithdrawalRequest);
+
+/**
+ * @swagger
+ * /admin/reprocess-stripe-transfers:
+ *   post:
+ *     summary: (Admin) Reprocessa transfers do Stripe para comissões sem repasse
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Limite de comissões a processar (padrão 100).
+ *     responses:
+ *       200:
+ *         description: Resultado do reprocessamento.
+ *       401:
+ *         description: Não autorizado.
+ *       403:
+ *         description: Acesso negado.
+ */
+router.post('/admin/reprocess-stripe-transfers', authMiddleware, adminMiddleware, retryStripeTransfers);
+router.post('/admin/users/:userId/reset-stripe-connect', authMiddleware, adminMiddleware, resetStripeConnectAccount);
 
 export default router;

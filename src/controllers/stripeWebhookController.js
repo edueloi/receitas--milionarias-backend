@@ -2,63 +2,71 @@
 import Stripe from 'stripe';
 import db from '../config/db.js';
 import { sendEmail } from '../services/emailService.js';
+import { getCommissionSettingsForRole, PERMISSION_ROLE_MAP } from '../config/commissionSettingsDb.js';
+import { all, get, run } from '../config/commissionPaymentsDb.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const resolveRoleName = (permissionId) => PERMISSION_ROLE_MAP[permissionId] || "afiliado";
 
 /**
  * Processa o pagamento bem-sucedido e cria comissão para o afiliado
  */
 async function handleSuccessfulPayment(paymentIntent) {
-  const connection = await db.getConnection();
-  
   try {
-    await connection.beginTransaction();
-    
-    const { amount, metadata, transfer_data, id: paymentIntentId } = paymentIntent;
-    const { email, firstName, lastName, affiliateId } = metadata || {};
-    
+    const { amount, metadata, id: paymentIntentId, latest_charge } = paymentIntent;
+    const { email, affiliateId } = metadata || {};
+
+    if (!email) {
+      console.log("PaymentIntent missing email metadata.");
+      return { success: false, reason: "missing_email" };
+    }
+
     console.log('📦 Processando pagamento:', {
       paymentIntentId,
       amount: amount / 100,
       email,
-      affiliateId
+      affiliateId,
     });
-    
-    // 1. Buscar ou criar usuário pagador
-    let [users] = await connection.query(
-      'SELECT id FROM usuarios WHERE email = ?',
-      [email]
-    );
-    
-    let userId;
+
+    // 1. Buscar usuário pagador
+    const [users] = await db.query('SELECT id FROM usuarios WHERE email = ?', [email]);
+
     if (users.length === 0) {
-      console.log('⚠️ Usuário não encontrado no banco. Criando novo usuário...');
-      // Se o usuário não existe, não podemos processar (deve ser criado antes)
-      throw new Error(`Usuário com email ${email} não encontrado no sistema`);
-    } else {
-      userId = users[0].id;
+      console.log('⚠️ Usuário não encontrado no banco.');
+      return { success: false, reason: 'user_not_found' };
     }
-    
-    // 2. Registrar o pagamento na tabela pagamentos
-    const [paymentResult] = await connection.query(
+
+    const userId = users[0].id;
+
+    // 2. Evitar duplicidade (SQLite)
+    const existingPayment = await get(
+      'SELECT id FROM pagamentos WHERE stripe_payment_intent_id = ? LIMIT 1',
+      [paymentIntentId]
+    );
+    if (existingPayment?.id) {
+      console.log('Pagamento já processado para esse payment_intent:', paymentIntentId);
+      return { success: true, pagamentoId: existingPayment.id, duplicated: true };
+    }
+
+    // 3. Registrar pagamento (SQLite)
+    const paymentResult = await run(
       `INSERT INTO pagamentos 
        (id_usuario, id_pagamento_gateway, valor, status, metodo_pagamento, 
         data_pagamento, fonte, stripe_payment_intent_id, metadata_json)
-       VALUES (?, ?, ?, 'aprovado', 'card', NOW(), 'stripe', ?, ?)`,
+       VALUES (?, ?, ?, 'aprovado', 'card', datetime('now'), 'stripe', ?, ?)`,
       [
         userId,
         paymentIntentId,
-        amount / 100, // Converter de centavos para reais
+        amount / 100,
         paymentIntentId,
-        JSON.stringify(metadata)
+        JSON.stringify(metadata || {}),
       ]
     );
-    
-    const pagamentoId = paymentResult.insertId;
+    const pagamentoId = paymentResult.lastID;
     console.log('✅ Pagamento registrado:', pagamentoId);
-    
-    // 3. Buscar informações do usuário que pagou (para pegar id_afiliado_indicador)
-    const [userInfo] = await connection.query(
+
+    // 4. Buscar informações do usuário pagador
+    const [userInfo] = await db.query(
       `SELECT 
         id, 
         nome, 
@@ -69,17 +77,17 @@ async function handleSuccessfulPayment(paymentIntent) {
        WHERE id = ?`,
       [userId]
     );
-    
+
     const pagador = userInfo[0];
-    
-    // 4. Identificar o afiliado que deve receber comissão
+
+    // 5. Identificar afiliado
     let afiliadoId = null;
     let afiliadoInfo = null;
-    
-    // Prioridade 1: metadata do Stripe (affiliateId passado no checkout)
+
     if (affiliateId) {
-      const [affiliate] = await connection.query(
-        'SELECT id, nome, email, stripe_account_id FROM usuarios WHERE id = ?',
+      const [affiliate] = await db.query(
+        `SELECT id, nome, email, stripe_account_id, id_permissao, id_status, id_afiliado_indicador
+         FROM usuarios WHERE id = ?`,
         [affiliateId]
       );
       if (affiliate.length > 0) {
@@ -87,11 +95,11 @@ async function handleSuccessfulPayment(paymentIntent) {
         afiliadoInfo = affiliate[0];
       }
     }
-    
-    // Prioridade 2: id_afiliado_indicador do usuário que pagou
-    if (!afiliadoId && pagador.id_afiliado_indicador) {
-      const [affiliate] = await connection.query(
-        'SELECT id, nome, email, stripe_account_id FROM usuarios WHERE id = ?',
+
+    if (!afiliadoId && pagador?.id_afiliado_indicador) {
+      const [affiliate] = await db.query(
+        `SELECT id, nome, email, stripe_account_id, id_permissao, id_status, id_afiliado_indicador
+         FROM usuarios WHERE id = ?`,
         [pagador.id_afiliado_indicador]
       );
       if (affiliate.length > 0) {
@@ -99,82 +107,179 @@ async function handleSuccessfulPayment(paymentIntent) {
         afiliadoInfo = affiliate[0];
       }
     }
-    
-    // 5. Se existe afiliado, criar comissão
+
+    // 6. Criar comissão (SQLite)
     if (afiliadoId && afiliadoInfo) {
-      const valorComissao = 9.90; // R$ 9,90 fixo
-      const dataLiberacao = new Date();
-      dataLiberacao.setDate(dataLiberacao.getDate() + 15); // 15 dias após o pagamento
-      
-      const descricao = `Comissão de afiliação - Novo usuário ${pagador.nome} (${pagador.email}) - Pagamento ${pagamentoId}`;
-      
-      const [comissaoResult] = await connection.query(
-        `INSERT INTO comissoes 
-         (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, 
-          data_liberacao, fonte, tipo_comissao, descricao)
-         VALUES (?, ?, ?, ?, 'pendente', ?, 'stripe', 'afiliacao', ?)`,
-        [
-          afiliadoId,
-          userId,
-          pagamentoId,
-          valorComissao,
-          dataLiberacao.toISOString().split('T')[0],
-          descricao
-        ]
-      );
-      
-      console.log('💰 Comissão criada:', {
-        id: comissaoResult.insertId,
-        afiliado: afiliadoInfo.nome,
-        valor: valorComissao,
-        liberacaoEm: dataLiberacao.toISOString().split('T')[0]
-      });
-      
-      // 6. Se o afiliado tem conta Stripe Connect, tentar fazer a transferência
-      if (afiliadoInfo.stripe_account_id && transfer_data) {
-        try {
-          // A transferência já foi configurada no payment_intent
-          // Vamos apenas registrar o transfer_id quando ele for executado
-          const transferId = transfer_data.destination;
-          
-          await connection.query(
-            'UPDATE comissoes SET stripe_transfer_id = ? WHERE id = ?',
-            [transferId, comissaoResult.insertId]
+      const affiliateRoleName = resolveRoleName(afiliadoInfo.id_permissao);
+      const affiliateSettings = await getCommissionSettingsForRole(affiliateRoleName);
+      const level1CentsRaw = Math.max(0, Number(affiliateSettings.level1_cents || 0));
+      const level1Cents = Math.min(level1CentsRaw, Number(amount || 0));
+
+      if (level1Cents > 0) {
+        const valorComissao = level1Cents / 100;
+        const dataLiberacao = new Date();
+        dataLiberacao.setDate(dataLiberacao.getDate() + 15);
+        const dataLiberacaoStr = dataLiberacao.toISOString().split('T')[0];
+
+        const descricao = `Comissão de afiliação - Novo usuário ${pagador.nome} (${pagador.email}) - Pagamento ${pagamentoId}`;
+
+        const comissaoResult = await run(
+          `INSERT INTO comissoes 
+           (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, 
+            data_liberacao, fonte, tipo_comissao, descricao)
+           VALUES (?, ?, ?, ?, 'pendente', ?, 'stripe', 'afiliacao', ?)`,
+          [
+            afiliadoId,
+            userId,
+            pagamentoId,
+            valorComissao,
+            dataLiberacaoStr,
+            descricao,
+          ]
+        );
+
+        console.log('💰 Comissão criada:', {
+          id: comissaoResult.lastID,
+          afiliado: afiliadoInfo.nome,
+          valor: valorComissao,
+          liberacaoEm: dataLiberacaoStr,
+        });
+
+        if (afiliadoInfo.stripe_account_id) {
+          try {
+            let chargeId = latest_charge;
+            if (!chargeId) {
+              const charges = await stripe.charges.list({
+                payment_intent: paymentIntentId,
+                limit: 1,
+              });
+              chargeId = charges?.data?.[0]?.id;
+            }
+
+            if (chargeId) {
+              const account = await stripe.accounts.retrieve(afiliadoInfo.stripe_account_id);
+              if (account.payouts_enabled) {
+                const transfer = await stripe.transfers.create({
+                  amount: level1Cents,
+                  currency: 'brl',
+                  destination: afiliadoInfo.stripe_account_id,
+                  source_transaction: chargeId,
+                  description: `Comissao afiliacao - ${pagador.email}`,
+                  transfer_group: paymentIntentId || undefined,
+                });
+
+                await run(
+                  'UPDATE comissoes SET stripe_transfer_id = ?, data_atualizacao = CURRENT_TIMESTAMP WHERE id = ?',
+                  [transfer.id, comissaoResult.lastID]
+                );
+
+                console.log('✅ Transfer ID registrado:', transfer.id);
+              }
+            }
+          } catch (transferError) {
+            console.error('⚠️ Erro ao registrar transfer:', transferError.message);
+          }
+        }
+
+        await db.query(
+          `INSERT INTO notificacoes 
+           (user_id, tipo, titulo, mensagem, link)
+           VALUES (?, 'pagamento', ?, ?, '/carteira')`,
+          [
+            afiliadoId,
+            'Nova Comissão Recebida! 💰',
+            `Você ganhou R$ ${valorComissao.toFixed(2)} pela indicação de ${pagador.nome}. O valor estará disponível em 15 dias.`,
+          ]
+        );
+
+        const parentAffiliateId = afiliadoInfo.id_afiliado_indicador;
+        if (parentAffiliateId) {
+          const [parents] = await db.query(
+            `SELECT id, nome, email, id_permissao, id_status, stripe_account_id
+             FROM usuarios WHERE id = ?`,
+            [parentAffiliateId]
           );
-          
-          console.log('✅ Transfer ID registrado:', transferId);
-        } catch (transferError) {
-          console.error('⚠️ Erro ao registrar transfer:', transferError.message);
-          // Não falha a transação se o transfer falhar
+          const parent = parents?.[0];
+          if (parent) {
+            const parentRole = resolveRoleName(parent.id_permissao);
+            const parentSettings = await getCommissionSettingsForRole(parentRole);
+            const secondEnabled = Number(parentSettings.level2_enabled) === 1;
+            const secondCents = Math.max(0, Number(parentSettings.level2_cents || 0));
+            if (parentRole === "afiliado pro" && parent.id_status === 1 && secondEnabled && secondCents > 0) {
+              const cappedSecondCents = Math.min(secondCents, Number(amount || 0));
+              const valorSegundoNivel = cappedSecondCents / 100;
+              const descricaoSegundoNivel = `Comissão nível 2 - Usuário ${pagador.nome} (${pagador.email}) - Pagamento ${pagamentoId}`;
+
+              const comissaoNivel2 = await run(
+                `INSERT INTO comissoes 
+                 (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, 
+                  data_liberacao, fonte, tipo_comissao, descricao)
+                 VALUES (?, ?, ?, ?, 'pendente', ?, 'stripe', 'afiliacao_nivel_2', ?)`,
+                [
+                  parent.id,
+                  userId,
+                  pagamentoId,
+                  valorSegundoNivel,
+                  dataLiberacaoStr,
+                  descricaoSegundoNivel,
+                ]
+              );
+
+              if (parent.stripe_account_id) {
+                try {
+                  let chargeId = latest_charge;
+                  if (!chargeId) {
+                    const charges = await stripe.charges.list({
+                      payment_intent: paymentIntentId,
+                      limit: 1,
+                    });
+                    chargeId = charges?.data?.[0]?.id;
+                  }
+                  if (chargeId) {
+                    const account2 = await stripe.accounts.retrieve(parent.stripe_account_id);
+                    if (account2.payouts_enabled) {
+                      const transfer2 = await stripe.transfers.create({
+                        amount: cappedSecondCents,
+                        currency: 'brl',
+                        destination: parent.stripe_account_id,
+                        source_transaction: chargeId,
+                        description: `Comissao nivel 2 - ${pagador.email}`,
+                        transfer_group: paymentIntentId || undefined,
+                      });
+                      await run(
+                        'UPDATE comissoes SET stripe_transfer_id = ?, data_atualizacao = CURRENT_TIMESTAMP WHERE id = ?',
+                        [transfer2.id, comissaoNivel2.lastID]
+                      );
+                    }
+                  }
+                } catch (transferError2) {
+                  console.error('⚠️ Erro ao registrar transfer nível 2:', transferError2.message);
+                }
+              }
+
+              await db.query(
+                `INSERT INTO notificacoes 
+                 (user_id, tipo, titulo, mensagem, link)
+                 VALUES (?, 'pagamento', ?, ?, '/carteira')`,
+                [
+                  parent.id,
+                  'Comissão de 2º nível! 💸',
+                  `Você ganhou R$ ${valorSegundoNivel.toFixed(2)} pelo 2º nível da indicação de ${pagador.nome}.`,
+                ]
+              );
+            }
+          }
         }
       }
-      
-      // 7. Criar notificação para o afiliado
-      await connection.query(
-        `INSERT INTO notificacoes 
-         (user_id, tipo, titulo, mensagem, link)
-         VALUES (?, 'pagamento', ?, ?, '/carteira')`,
-        [
-          afiliadoId,
-          'Nova Comissão Recebida! 💰',
-          `Você ganhou R$ ${valorComissao.toFixed(2)} pela indicação de ${pagador.nome}. O valor estará disponível em 15 dias.`
-        ]
-      );
     } else {
       console.log('ℹ️ Nenhum afiliado encontrado para este pagamento');
     }
-    
-    await connection.commit();
-    console.log('✅ Transação concluída com sucesso!');
-    
+
+    console.log('✅ Processamento concluído com sucesso!');
     return { success: true, pagamentoId, afiliadoId };
-    
   } catch (error) {
-    await connection.rollback();
     console.error('❌ Erro ao processar pagamento:', error);
     throw error;
-  } finally {
-    connection.release();
   }
 }
 
@@ -218,7 +323,6 @@ async function handleCheckoutCompleted(session) {
     await db.query(
       `UPDATE usuarios 
        SET id_status = 1,
-           data_ativacao = NOW(),
            data_expiracao_assinatura = DATE_ADD(NOW(), INTERVAL 365 DAY)
        WHERE id = ?`,
       [user.id]
@@ -261,38 +365,93 @@ async function handleCheckoutCompleted(session) {
       </div>
     `;
 
-    await sendEmail({
-      to: email,
-      subject: "Cadastro confirmado - Receitas Milionarias",
-      html,
-    });
-    
+    try {
+      await sendEmail({
+        to: email,
+        subject: "Cadastro confirmado - Receitas Milionarias",
+        html,
+      });
+    } catch (emailError) {
+      console.error("Erro ao enviar email de confirmacao:", emailError?.message || emailError);
+    }
     // Se tiver afiliado, registra comissão
     if (user.id_afiliado_indicador) {
-      const valorComissao = 9.90; // R$ 9,90 fixo para afiliado
-      const dataLiberacao = new Date();
-      dataLiberacao.setDate(dataLiberacao.getDate() + 30); // Libera após 30 dias
-      
-      await db.query(
-        `INSERT INTO comissoes 
-         (id_afiliado, id_usuario_indicado, id_pagamento, valor, status, data_liberacao)
-         VALUES (?, ?, NULL, ?, 'pendente', ?)`,
-        [user.id_afiliado_indicador, user.id, valorComissao, dataLiberacao]
+      const [affiliateRows] = await db.query(
+        `SELECT id, nome, email, id_permissao, id_status, id_afiliado_indicador
+         FROM usuarios WHERE id = ?`,
+        [user.id_afiliado_indicador]
       );
-      
-      console.log('💰 Comissão registrada para afiliado:', user.id_afiliado_indicador);
-      
-      // Notifica o afiliado
-      await db.query(
-        `INSERT INTO notificacoes 
-         (user_id, tipo, titulo, mensagem, link)
-         VALUES (?, 'comissao', ?, ?, '/afiliados')`,
-        [
-          user.id_afiliado_indicador,
-          'Nova Comissão! 🎉',
-          `${user.nome} se cadastrou usando seu link de afiliado! Você ganhou R$ 9,90 de comissão.`
-        ]
-      );
+      const affiliate = affiliateRows?.[0];
+      if (affiliate) {
+        const affiliateRoleName = resolveRoleName(affiliate.id_permissao);
+        const affiliateSettings = await getCommissionSettingsForRole(affiliateRoleName);
+        const level1Cents = Math.max(0, Number(affiliateSettings.level1_cents || 0));
+
+        if (level1Cents > 0) {
+          const valorComissao = level1Cents / 100;
+          const dataLiberacao = new Date();
+          dataLiberacao.setDate(dataLiberacao.getDate() + 30); // Libera após 30 dias
+          
+          const dataLiberacaoStr = dataLiberacao.toISOString().split('T')[0];
+          await run(
+            `INSERT INTO comissoes 
+             (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, data_liberacao)
+             VALUES (?, ?, NULL, ?, 'pendente', ?)`,
+            [user.id_afiliado_indicador, user.id, valorComissao, dataLiberacaoStr]
+          );
+          
+          console.log('💰 Comissão registrada para afiliado:', user.id_afiliado_indicador);
+          
+          // Notifica o afiliado
+          await db.query(
+            `INSERT INTO notificacoes 
+             (user_id, tipo, titulo, mensagem, link)
+             VALUES (?, 'comissao', ?, ?, '/afiliados')`,
+            [
+              user.id_afiliado_indicador,
+              'Nova Comissão! 🎉',
+              `${user.nome} se cadastrou usando seu link de afiliado! Você ganhou R$ ${valorComissao.toFixed(2)} de comissão.`
+            ]
+          );
+
+          // Comissão de segundo nível (apenas afiliado pro ativo)
+          const parentAffiliateId = affiliate.id_afiliado_indicador;
+          if (parentAffiliateId) {
+            const [parents] = await db.query(
+              `SELECT id, nome, email, id_permissao, id_status
+               FROM usuarios WHERE id = ?`,
+              [parentAffiliateId]
+            );
+            const parent = parents?.[0];
+            if (parent) {
+              const parentRole = resolveRoleName(parent.id_permissao);
+              const parentSettings = await getCommissionSettingsForRole(parentRole);
+              const secondEnabled = Number(parentSettings.level2_enabled) === 1;
+              const secondCents = Math.max(0, Number(parentSettings.level2_cents || 0));
+              if (parentRole === "afiliado pro" && parent.id_status === 1 && secondEnabled && secondCents > 0) {
+                const valorSegundoNivel = secondCents / 100;
+                await run(
+                  `INSERT INTO comissoes 
+                   (id_afiliado, id_usuario_pagador, id_pagamento_origem, valor, status, data_liberacao)
+                   VALUES (?, ?, NULL, ?, 'pendente', ?)`,
+                  [parent.id, user.id, valorSegundoNivel, dataLiberacaoStr]
+                );
+
+                await db.query(
+                  `INSERT INTO notificacoes 
+                   (user_id, tipo, titulo, mensagem, link)
+                   VALUES (?, 'comissao', ?, ?, '/afiliados')`,
+                  [
+                    parent.id,
+                    'Comissão de 2º nível! 💸',
+                    `${user.nome} se cadastrou via seu 2º nível! Você ganhou R$ ${valorSegundoNivel.toFixed(2)}.`
+                  ]
+                );
+              }
+            }
+          }
+        }
+      }
     }
     
     // Notifica o usuário que foi ativado
@@ -309,6 +468,59 @@ async function handleCheckoutCompleted(session) {
     
   } catch (error) {
     console.error('❌ Erro ao processar checkout completed:', error);
+    throw error;
+  }
+}
+
+async function handleInvoicePaid(invoice) {
+  try {
+    if (!invoice) return;
+
+    const paymentIntentId = invoice.payment_intent;
+    if (!paymentIntentId) {
+      console.log('⚠️ Invoice sem payment_intent:', invoice.id);
+      return;
+    }
+
+    let email = invoice.customer_email;
+    if (!email && invoice.customer) {
+      try {
+        const customer = await stripe.customers.retrieve(invoice.customer);
+        email = customer?.email || null;
+      } catch (customerErr) {
+        console.error('Erro ao buscar customer do invoice:', customerErr?.message || customerErr);
+      }
+    }
+
+    let metadata = {};
+    if (invoice.subscription) {
+      try {
+        const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+        metadata = subscription?.metadata || {};
+      } catch (subErr) {
+        console.error('Erro ao buscar subscription do invoice:', subErr?.message || subErr);
+      }
+    }
+
+    const amount = Number(invoice.amount_paid || 0);
+    const latestCharge = invoice.charge || undefined;
+
+    const paymentIntent = {
+      id: paymentIntentId,
+      amount,
+      latest_charge: latestCharge,
+      metadata: {
+        email: email || '',
+        firstName: metadata.firstName || '',
+        lastName: metadata.lastName || '',
+        affiliateId: metadata.affiliateId || '',
+        affiliateCode: metadata.affiliateCode || '',
+      },
+    };
+
+    await handleSuccessfulPayment(paymentIntent);
+  } catch (error) {
+    console.error('❌ Erro ao processar invoice.paid:', error);
     throw error;
   }
 }
@@ -349,6 +561,12 @@ export const handleStripeWebhook = async (req, res) => {
         const session = event.data.object;
         console.log('✅ Checkout session completed:', session.id);
         await handleCheckoutCompleted(session);
+        break;
+        
+      case 'invoice.paid':
+        const invoice = event.data.object;
+        console.log('✅ Invoice paid:', invoice.id);
+        await handleInvoicePaid(invoice);
         break;
         
       case 'account.updated':
@@ -395,30 +613,48 @@ export const handleStripeWebhook = async (req, res) => {
  */
 export const liberarComissoesPendentes = async () => {
   try {
-    const [result] = await db.query(
+    const summary = await get(
+      `SELECT COUNT(*) as total
+       FROM comissoes
+       WHERE status = 'pendente'
+       AND date(data_liberacao) <= date('now')`
+    );
+
+    await run(
       `UPDATE comissoes 
-       SET status = 'disponivel'
+       SET status = 'disponivel',
+           data_atualizacao = CURRENT_TIMESTAMP
        WHERE status = 'pendente' 
-       AND data_liberacao <= CURDATE()`
+       AND date(data_liberacao) <= date('now')`
     );
-    
-    console.log(`✅ ${result.affectedRows} comissões liberadas para disponível`);
-    
-    // Notificar afiliados sobre comissões disponíveis
-    const [comissoesLiberadas] = await db.query(
+
+    const updated = Number(summary?.total || 0);
+    console.log(`✅ ${updated} comissões liberadas para disponível`);
+
+    const comissoesLiberadas = await all(
       `SELECT 
-        c.id_afiliado,
-        c.valor,
-        u.nome,
-        u.email
-       FROM comissoes c
-       JOIN usuarios u ON c.id_afiliado = u.id
-       WHERE c.status = 'disponivel'
-       AND DATE(c.data_atualizacao) = CURDATE()
-       GROUP BY c.id_afiliado`
+        id_afiliado,
+        SUM(valor) as valor_total
+       FROM comissoes
+       WHERE status = 'disponivel'
+       AND date(data_atualizacao) = date('now')
+       GROUP BY id_afiliado`
     );
-    
+
+    const affiliateIds = comissoesLiberadas.map((row) => row.id_afiliado);
+    let usersMap = new Map();
+    if (affiliateIds.length > 0) {
+      const placeholders = affiliateIds.map(() => '?').join(',');
+      const [users] = await db.query(
+        `SELECT id, nome, email FROM usuarios WHERE id IN (${placeholders})`,
+        affiliateIds
+      );
+      usersMap = new Map(users.map((row) => [row.id, row]));
+    }
+
     for (const item of comissoesLiberadas) {
+      const user = usersMap.get(item.id_afiliado);
+      if (!user) continue;
       await db.query(
         `INSERT INTO notificacoes 
          (user_id, tipo, titulo, mensagem, link)
@@ -426,16 +662,20 @@ export const liberarComissoesPendentes = async () => {
         [
           item.id_afiliado,
           'Comissão Disponível! 💵',
-          `Suas comissões no valor de R$ ${item.valor.toFixed(2)} estão disponíveis para saque!`
+          `Suas comissões no valor de R$ ${Number(item.valor_total || 0).toFixed(2)} estão disponíveis para saque!`,
         ]
       );
     }
-    
-    return result.affectedRows;
+
+    return updated;
   } catch (error) {
     console.error('❌ Erro ao liberar comissões pendentes:', error);
     throw error;
   }
 };
+
+
+
+
 
 

@@ -1,5 +1,9 @@
 // src/controllers/adminController.js
 import db from '../config/db.js';
+import Stripe from 'stripe';
+import { all, run } from '../config/commissionPaymentsDb.js';
+
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 /**
  * (Admin) Libera o saldo pendente de um usuário, movendo-o para o saldo disponível.
@@ -154,5 +158,160 @@ export const processWithdrawalRequest = async (req, res) => {
     res.status(500).json({ message: 'Erro interno do servidor.' });
   } finally {
     if (connection) connection.release();
+  }
+};
+
+/**
+ * (Admin) Reprocessa transferências Stripe de comissões sem repasse.
+ * Tenta criar transfer usando source_transaction do payment_intent.
+ */
+export const retryStripeTransfers = async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ message: 'STRIPE_SECRET_KEY não configurada.' });
+  }
+
+  const limit = Number(req.query.limit || 100);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return res.status(400).json({ message: 'Limit inválido.' });
+  }
+
+  try {
+    const rows = await all(
+      `SELECT 
+          c.id AS commission_id,
+          c.valor AS commission_value,
+          c.id_afiliado,
+          c.stripe_transfer_id,
+          c.status,
+          c.fonte,
+          p.stripe_payment_intent_id
+       FROM comissoes c
+       JOIN pagamentos p ON c.id_pagamento_origem = p.id
+       WHERE c.fonte = 'stripe'
+         AND (c.stripe_transfer_id IS NULL OR c.stripe_transfer_id = '')
+         AND p.stripe_payment_intent_id IS NOT NULL
+         AND c.valor > 0
+       ORDER BY c.id DESC
+       LIMIT ?`,
+      [limit]
+    );
+
+    const affiliateIds = rows.map((row) => row.id_afiliado);
+    let usersMap = new Map();
+    if (affiliateIds.length > 0) {
+      const placeholders = affiliateIds.map(() => '?').join(',');
+      const [users] = await db.query(
+        `SELECT id, stripe_account_id, email FROM usuarios WHERE id IN (${placeholders})`,
+        affiliateIds
+      );
+      usersMap = new Map(users.map((row) => [row.id, row]));
+    }
+
+    let success = 0;
+    let failed = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (const row of rows) {
+      try {
+        const user = usersMap.get(row.id_afiliado);
+        if (!user?.stripe_account_id) {
+          skipped += 1;
+          continue;
+        }
+
+        const account = await stripe.accounts.retrieve(user.stripe_account_id);
+        if (!account.payouts_enabled) {
+          skipped += 1;
+          continue;
+        }
+
+        const paymentIntentId = row.stripe_payment_intent_id;
+        const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+        const amountCents = Math.round(Number(row.commission_value || 0) * 100);
+        const cappedCents = Math.min(amountCents, Number(pi.amount || 0));
+
+        let chargeId = pi.latest_charge;
+        if (!chargeId) {
+          const charges = await stripe.charges.list({
+            payment_intent: paymentIntentId,
+            limit: 1,
+          });
+          chargeId = charges?.data?.[0]?.id;
+        }
+
+        if (!chargeId || cappedCents <= 0) {
+          skipped += 1;
+          continue;
+        }
+
+        const transfer = await stripe.transfers.create({
+          amount: cappedCents,
+          currency: 'brl',
+          destination: user.stripe_account_id,
+          source_transaction: chargeId,
+          description: `Reprocessar comissão - ${user.email || row.id_afiliado}`,
+          transfer_group: paymentIntentId || undefined,
+        });
+
+        await run(
+          'UPDATE comissoes SET stripe_transfer_id = ?, data_atualizacao = CURRENT_TIMESTAMP WHERE id = ?',
+          [transfer.id, row.commission_id]
+        );
+
+        success += 1;
+      } catch (err) {
+        failed += 1;
+        errors.push({
+          commission_id: row.commission_id,
+          message: err?.message || 'erro',
+        });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      total: rows.length,
+      success,
+      failed,
+      skipped,
+      errors,
+    });
+  } catch (error) {
+    console.error('Erro ao reprocessar transfers:', error);
+    return res.status(500).json({ message: 'Erro interno do servidor.' });
+  }
+};
+
+/**
+ * (Admin) Limpa o stripe_account_id de um usuário para forçar novo onboarding.
+ */
+export const resetStripeConnectAccount = async (req, res) => {
+  const { userId } = req.params;
+  if (!userId || isNaN(Number(userId))) {
+    return res.status(400).json({ message: "userId inválido." });
+  }
+
+  try {
+    const [rows] = await db.query(
+      "SELECT stripe_account_id, email FROM usuarios WHERE id = ?",
+      [userId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: "Usuário não encontrado." });
+    }
+
+    const oldId = rows[0].stripe_account_id || null;
+    await db.query("UPDATE usuarios SET stripe_account_id = NULL WHERE id = ?", [userId]);
+
+    return res.json({
+      ok: true,
+      userId: Number(userId),
+      email: rows[0].email,
+      previous_stripe_account_id: oldId,
+    });
+  } catch (error) {
+    console.error("Erro ao resetar Stripe Connect:", error);
+    return res.status(500).json({ message: "Erro interno do servidor." });
   }
 };

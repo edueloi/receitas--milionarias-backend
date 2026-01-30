@@ -36,6 +36,11 @@ import payoutRoutes from "./routes/payoutRoutes.js";
 import rolePermissionsRoutes from "./routes/rolePermissionsRoutes.js";
 import notificationsRoutes from "./routes/notifications.js";
 import cursosRoutes from "./routes/cursosRoutes.js";
+import affiliateCommissionSettingsRoutes from "./routes/affiliateCommissionSettingsRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+
+import { initCommissionSettingsDb } from "./config/commissionSettingsDb.js";
+import { initCommissionPaymentsDb } from "./config/commissionPaymentsDb.js";
 
 // Store de sessão em MySQL (produção)
 import MySQLStoreFactory from "express-mysql-session";
@@ -56,6 +61,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+initCommissionSettingsDb().catch((error) => {
+  console.error("Erro ao iniciar o banco SQLite de comissoes:", error);
+});
+initCommissionPaymentsDb().catch((error) => {
+  console.error("Erro ao iniciar o banco SQLite de pagamentos/comissoes:", error);
+});
+
 // conf de proxy (req.ip real atrás de nginx/cloudflare)
 app.set("trust proxy", true);
 
@@ -71,7 +83,7 @@ app.use((req, res, next) => {
 // Webhook do Stripe deve vir ANTES do body-parser JSON
 app.post(
   "/stripe-webhook",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "*/*" }),
   handleStripeWebhook
 );
 
@@ -115,6 +127,7 @@ app.get("/test-index", (_req, res) => res.send("Index test route is working!"));
 // -------------------- APIs --------------------
 console.log("Registrando rotas da API...");
 app.use(rolePermissionsRoutes);
+app.use(affiliateCommissionSettingsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api", cursosRoutes); // Rotas de cursos
 app.use(userRoutes);
@@ -137,6 +150,7 @@ app.use(withdrawalRoutes);
 app.use(stripeRoutes); // não registre /dashboard aqui
 app.use("/wallet", walletRoutes);
 app.use("/payouts", payoutRoutes);
+app.use(adminRoutes);
 console.log("Rotas da API registradas.");
 
 // -------------------- Docs --------------------
