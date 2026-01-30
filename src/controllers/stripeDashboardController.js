@@ -140,7 +140,7 @@ export const getStripeDashboardData = async (req, res) => {
         const account = await stripe.accounts.retrieve(accountId);
         accountEmail = account?.email || null;
       } catch (err) {
-        console.warn('NÃ£o foi possÃ­vel recuperar conta Stripe conectada:', err.message || err);
+        console.warn('Não foi possível recuperar conta Stripe conectada:', err.message || err);
       }
 
       if (

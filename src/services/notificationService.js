@@ -10,7 +10,7 @@ import db from '../config/db.js';
 const userWantsNotification = async (userId, notificationType) => {
   try {
     const [prefs] = await db.query(
-      'SELECT preferencia_valor FROM user_preferences WHERE user_id = ? AND preferencia_chave = ?',
+      'SELECT preferencia_valor FROM user_preferences WHERE id_usuario = ? AND preferencia_chave = ?',
       [userId, notificationType]
     );
     
