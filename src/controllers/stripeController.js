@@ -253,7 +253,7 @@ export const onboardUser = async (req, res) => {
                 };
 
             const account = await stripe.accounts.create(accountParams, {
-                idempotencyKey: `acct_create_user_${userId}`
+                idempotencyKey: `acct_create_user_${userId}_${Date.now()}`
             });
             
             accountId = account.id;
