@@ -110,6 +110,48 @@ const initCommissionPaymentsDb = async () => {
   await run(
     "CREATE INDEX IF NOT EXISTS idx_comissoes_stripe_transfer ON comissoes(stripe_transfer_id)"
   );
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS affiliate_pro_invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT NOT NULL UNIQUE,
+      created_by INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      used_by_user_id INTEGER,
+      rejected_at TEXT,
+      rejected_reason TEXT
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS affiliate_pro_contracts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invite_id INTEGER NOT NULL,
+      user_id INTEGER,
+      email TEXT,
+      status TEXT NOT NULL,
+      accepted_at TEXT,
+      rejected_at TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await run(
+    "CREATE INDEX IF NOT EXISTS idx_affiliate_pro_invites_token ON affiliate_pro_invites(token)"
+  );
+  await run(
+    "CREATE INDEX IF NOT EXISTS idx_affiliate_pro_invites_expires ON affiliate_pro_invites(expires_at)"
+  );
+  await run(
+    "CREATE INDEX IF NOT EXISTS idx_affiliate_pro_contracts_invite ON affiliate_pro_contracts(invite_id)"
+  );
+  await run(
+    "CREATE INDEX IF NOT EXISTS idx_affiliate_pro_contracts_user ON affiliate_pro_contracts(user_id)"
+  );
 };
 
 export { db as commissionPaymentsDb, initCommissionPaymentsDb, run, get, all };

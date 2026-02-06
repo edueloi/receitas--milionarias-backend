@@ -97,4 +97,9 @@ router.post('/pdf/parse-recipe', uploadPdf.single('pdfFile'), async (req, res, n
   return parseRecipePdf(req, res, next);
 }); // Descomentado
 
+router.get('/pdf/affiliate-pro-contract', async (req, res, next) => {
+  const { generateAffiliateProContractPdf } = await import('../controllers/pdfController.js');
+  return generateAffiliateProContractPdf(req, res, next);
+});
+
 export default router;

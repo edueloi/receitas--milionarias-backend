@@ -38,6 +38,7 @@ import notificationsRoutes from "./routes/notifications.js";
 import cursosRoutes from "./routes/cursosRoutes.js";
 import affiliateCommissionSettingsRoutes from "./routes/affiliateCommissionSettingsRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import affiliateProRoutes from "./routes/affiliateProRoutes.js";
 
 import { initCommissionSettingsDb } from "./config/commissionSettingsDb.js";
 import { initCommissionPaymentsDb } from "./config/commissionPaymentsDb.js";
@@ -157,6 +158,7 @@ app.use(stripeRoutes); // não registre /dashboard aqui
 app.use("/wallet", walletRoutes);
 app.use("/payouts", payoutRoutes);
 app.use(adminRoutes);
+app.use(affiliateProRoutes);
 console.log("Rotas da API registradas.");
 
 // -------------------- Docs --------------------

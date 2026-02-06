@@ -8,12 +8,18 @@ const isPublic = (req) => {
     return (
       url === '/' ||
       url.startsWith('/dashboard') ||
+      url.startsWith('/affiliate-pro/invite') ||
+      url.startsWith('/pdf/affiliate-pro-contract') ||
       url.startsWith('/stripe-dashboard-data') ||
       url.startsWith('/api-docs') ||
       url.startsWith('/css/') ||
       url.startsWith('/js/') ||
       url.startsWith('/uploads/')
     );
+  }
+  if (req.method === 'POST') {
+    const url = req.originalUrl || req.url || '';
+    return url.startsWith('/affiliate-pro/register') || url.startsWith('/affiliate-pro/decline');
   }
   return false;
 };

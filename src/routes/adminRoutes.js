@@ -8,7 +8,9 @@ import {
   processWithdrawalRequest,
   retryStripeTransfers,
   resetStripeConnectAccount,
+  listAffiliateProContracts,
 } from '../controllers/adminController.js';
+import { createAffiliateProInvite } from '../controllers/affiliateProController.js';
 
 const router = express.Router();
 
@@ -145,5 +147,7 @@ router.post('/admin/withdrawals/:withdrawalId/process', authMiddleware, adminMid
  */
 router.post('/admin/reprocess-stripe-transfers', authMiddleware, adminMiddleware, retryStripeTransfers);
 router.post('/admin/users/:userId/reset-stripe-connect', authMiddleware, adminMiddleware, resetStripeConnectAccount);
+router.post('/admin/affiliate-pro-invite', authMiddleware, adminMiddleware, createAffiliateProInvite);
+router.get('/admin/affiliate-pro-contracts', authMiddleware, adminMiddleware, listAffiliateProContracts);
 
 export default router;

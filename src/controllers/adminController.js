@@ -1,7 +1,7 @@
 // src/controllers/adminController.js
 import db from '../config/db.js';
 import Stripe from 'stripe';
-import { all, run } from '../config/commissionPaymentsDb.js';
+import { all, run, get } from '../config/commissionPaymentsDb.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -366,6 +366,82 @@ export const retryStripeTransfers = async (req, res) => {
   } catch (error) {
     console.error('Erro ao reprocessar transfers:', error);
     return res.status(500).json({ message: 'Erro interno do servidor.' });
+  }
+};
+
+export const listAffiliateProContracts = async (req, res) => {
+  try {
+    const limit = Number(req.query.limit || 100);
+    const rows = await all(
+      `
+      SELECT
+        i.id AS invite_id,
+        i.token,
+        i.created_by,
+        i.created_at,
+        i.expires_at,
+        i.used_at,
+        i.used_by_user_id,
+        i.rejected_at AS invite_rejected_at,
+        c.id AS contract_id,
+        c.user_id,
+        c.email AS contract_email,
+        c.status AS contract_status,
+        c.accepted_at,
+        c.rejected_at AS contract_rejected_at
+      FROM affiliate_pro_invites i
+      LEFT JOIN affiliate_pro_contracts c ON c.invite_id = i.id
+      ORDER BY i.id DESC
+      LIMIT ?
+      `,
+      [limit]
+    );
+
+    const userIds = rows
+      .map((row) => row.user_id || row.used_by_user_id)
+      .filter((id) => id != null);
+
+    let usersMap = new Map();
+    if (userIds.length > 0) {
+      const placeholders = userIds.map(() => '?').join(',');
+      const [users] = await db.query(
+        `SELECT id, nome, sobrenome, email FROM usuarios WHERE id IN (${placeholders})`,
+        userIds
+      );
+      usersMap = new Map(users.map((row) => [row.id, row]));
+    }
+
+    const response = rows.map((row) => {
+      const userId = row.user_id || row.used_by_user_id;
+      const user = userId ? usersMap.get(userId) : null;
+      const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+      const isExpired = expiresAt ? expiresAt.getTime() < Date.now() : false;
+      let status = row.contract_status;
+      if (!status) {
+        if (row.invite_rejected_at) status = "rejected";
+        else if (row.used_at) status = "accepted";
+        else if (isExpired) status = "expired";
+        else status = "pending";
+      }
+
+      return {
+        invite_id: row.invite_id,
+        token: row.token,
+        status,
+        expires_at: row.expires_at,
+        used_at: row.used_at,
+        accepted_at: row.accepted_at,
+        rejected_at: row.contract_rejected_at || row.invite_rejected_at,
+        user_id: userId || null,
+        nome: user ? `${user.nome || ""} ${user.sobrenome || ""}`.trim() : null,
+        email: user?.email || row.contract_email || null,
+      };
+    });
+
+    res.json(response);
+  } catch (error) {
+    console.error("Erro ao listar contratos Afiliado Pro:", error);
+    res.status(500).json({ message: "Erro interno no servidor." });
   }
 };
 
