@@ -293,7 +293,7 @@ export const generateAffiliateProContractPdf = async (_req, res) => {
       '3. DIREITOS DO AFILIADO PRO',
       'O Afiliado Pro tera direito a: (a) divulgar a PLATAFORMA por meios proprios, respeitando este contrato; (b) cadastrar, criar e disponibilizar conteudos proprios (cursos, ebooks, receitas), desde que aprovados ou liberados no painel; (c) utilizar materiais oficiais disponibilizados pela PLATAFORMA; (d) receber comissoes por indicacoes validas; (e) acessar relatorios e informacoes financeiras no painel.',
       '4. COMISSOES, VALORES E PAGAMENTOS',
-      '4.1. A comissao padrao e de R$ 20,00 por indicacao ativa e valida, podendo ser alterada a criterio da PLATAFORMA mediante aviso previo no painel.',
+      '4.1. A comissao padrao e de R$ 19,90 por indicacao ativa e valida, podendo ser alterada a criterio da PLATAFORMA mediante aviso previo no painel.',
       '4.2. Considera-se indicacao valida aquela que seja concluida corretamente, nao envolva fraude, duplicidade ou ma-fe, e nao seja cancelada ou contestada (chargeback).',
       '4.3. Os pagamentos serao realizados em ciclos definidos pela PLATAFORMA, podendo exigir valor minimo para saque.',
       '4.4. A PLATAFORMA podera reter, suspender ou estornar comissoes em casos de fraude, chargeback ou cancelamento, violacao deste contrato, ou uso indevido da marca.',
