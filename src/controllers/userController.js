@@ -355,7 +355,19 @@ export const updateUserProfile = async (req, res) => {
 
             // 3. Adicionar a nova URL da foto para atualização no banco
             fieldsToUpdate.push('foto_perfil_url = ?');
-            values.push(req.file.path);
+            values.push(req.file.path.replace(/\\/g, '/'));
+        } else if (req.body.remover_foto_perfil === 'true') {
+            // Lógica para remover a foto (sem enviar uma nova)
+            const [currentUser] = await db.query('SELECT foto_perfil_url FROM usuarios WHERE id = ?', [userId]);
+            const oldPhotoUrl = currentUser[0]?.foto_perfil_url;
+
+            if (oldPhotoUrl) {
+                const oldPhotoPath = path.join(process.cwd(), oldPhotoUrl);
+                if (fs.existsSync(oldPhotoPath)) {
+                    fs.unlinkSync(oldPhotoPath);
+                }
+            }
+            fieldsToUpdate.push('foto_perfil_url = NULL');
         }
 
         // Monta a query dinamicamente apenas com campos permitidos

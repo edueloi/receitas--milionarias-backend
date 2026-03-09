@@ -330,14 +330,19 @@ export const retryStripeTransfers = async (req, res) => {
           continue;
         }
 
-        const transfer = await stripe.transfers.create({
-          amount: cappedCents,
-          currency: 'brl',
-          destination: user.stripe_account_id,
-          source_transaction: chargeId,
-          description: `Reprocessar comissão - ${user.email || row.id_afiliado}`,
-          transfer_group: paymentIntentId || undefined,
-        });
+        const transfer = await stripe.transfers.create(
+          {
+            amount: cappedCents,
+            currency: "brl",
+            destination: user.stripe_account_id,
+            source_transaction: chargeId,
+            description: `Reprocessar comissão - ${user.email || row.id_afiliado}`,
+            transfer_group: paymentIntentId || undefined,
+          },
+          {
+            idempotencyKey: `transfer_reprocess_comm_${row.commission_id}`,
+          }
+        );
 
         await run(
           'UPDATE comissoes SET stripe_transfer_id = ?, data_atualizacao = CURRENT_TIMESTAMP WHERE id = ?',
