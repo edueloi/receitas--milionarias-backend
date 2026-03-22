@@ -73,7 +73,23 @@ initCommissionPaymentsDb().catch((error) => {
 app.set("trust proxy", true);
 
 // -------------------- Middlewares base --------------------
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "https://dashboard.receitasmilionarias.com.br")
+  .split(",")
+  .map((o) => o.trim());
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Permite requests sem origin (ex: curl, Postman) e origins autorizadas
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS bloqueado para: ${origin}`));
+      }
+    },
+    credentials: true,
+  })
+);
 
 // DEBUG: Log all incoming requests
 app.use((req, res, next) => {
