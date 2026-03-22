@@ -53,7 +53,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 1024 * 1024 * 100 }, // 100MB
+  limits: { fileSize: 1024 * 1024 * 200 }, // 200MB
 });
 
 // routes
@@ -82,11 +82,18 @@ router
   )
   .delete(authMiddleware, ebookController.deleteEbook);
 
+router.route("/:id/view").get(ebookController.viewEbook);
 router.route("/:id/download").get(ebookController.downloadEbook);
 
 // handler opcional para erros de upload (retorna JSON bonitinho)
 router.use((err, _req, res, next) => {
-  if (err instanceof multer.MulterError || err?.message?.toLowerCase().includes("arquivo")) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ message: "Arquivo muito grande. O tamanho máximo permitido é 200MB." });
+    }
+    return res.status(400).json({ message: err.message });
+  }
+  if (err?.message?.toLowerCase().includes("arquivo")) {
     return res.status(400).json({ message: err.message });
   }
   next(err);

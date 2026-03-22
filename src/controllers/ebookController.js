@@ -320,6 +320,33 @@ export const deleteEbook = async (req, res) => {
   }
 };
 
+export const viewEbook = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [ebooks] = await db.query(
+      "SELECT arquivo_url FROM ebooks WHERE id = ?",
+      [id]
+    );
+    if (ebooks.length === 0 || !ebooks[0].arquivo_url) {
+      return res.status(404).json({ message: "Arquivo do ebook não encontrado." });
+    }
+
+    const filePath = toAbs(ebooks[0].arquivo_url);
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).send("Arquivo não encontrado no servidor.");
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline");
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error) {
+    console.error("Erro ao visualizar ebook:", error);
+    res.status(500).json({ message: "Erro interno no servidor." });
+  }
+};
+
 export const downloadEbook = async (req, res) => {
   const connection = await db.getConnection();
   try {
