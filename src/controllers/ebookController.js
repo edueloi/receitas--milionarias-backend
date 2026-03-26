@@ -34,11 +34,20 @@ export const createEbook = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: "Título é obrigatório." });
     }
+    if (titulo.length > 255) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Título não pode exceder 255 caracteres." });
+    }
+    if (descricao_curta && descricao_curta.length > 300) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Descrição curta não pode exceder 300 caracteres." });
+    }
 
     const usuario_id = req.user.id;
 
-    // slug base + checagem de duplicado
-    const baseSlug = slugify(titulo, { lower: true, strict: true });
+    // slug base + checagem de duplicado (truncado para caber na coluna VARCHAR(280))
+    const rawSlug = slugify(titulo, { lower: true, strict: true });
+    const baseSlug = rawSlug.slice(0, 265);
     let slug = baseSlug;
     const [[{ cnt }]] = await connection.query(
       "SELECT COUNT(*) AS cnt FROM ebooks WHERE slug = ?",
@@ -224,7 +233,7 @@ export const updateEbook = async (req, res) => {
 
     let novoSlug = existingEbook.slug;
     if (titulo && titulo !== existingEbook.titulo) {
-      const baseSlug = slugify(titulo, { lower: true, strict: true });
+      const baseSlug = slugify(titulo, { lower: true, strict: true }).slice(0, 265);
       novoSlug = baseSlug;
       const [[{ cnt }]] = await connection.query(
         "SELECT COUNT(*) AS cnt FROM ebooks WHERE slug = ? AND id <> ?",
