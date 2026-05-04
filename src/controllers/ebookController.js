@@ -356,51 +356,6 @@ export const viewEbook = async (req, res) => {
   }
 };
 
-export const downloadEbook = async (req, res) => {
-  const connection = await db.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    const { id } = req.params;
-
-    const [ebooks] = await connection.query(
-      "SELECT arquivo_url FROM ebooks WHERE id = ?",
-      [id]
-    );
-    if (ebooks.length === 0 || !ebooks[0].arquivo_url) {
-      await connection.rollback();
-      return res.status(404).json({ message: "Arquivo do ebook não encontrado." });
-    }
-
-    const ebook = ebooks[0];
-    const filePath = toAbs(ebook.arquivo_url);
-
-    if (filePath && fs.existsSync(filePath)) {
-      await connection.query("UPDATE ebooks SET downloads = downloads + 1 WHERE id = ?", [id]);
-
-      await connection.query(
-        `INSERT INTO ebook_downloads (ebook_id, usuario_id, ip, user_agent, origem)
-           VALUES (?, ?, INET6_ATON(?), ?, ?)`,
-        [
-          id,
-          req.user?.id ?? null,
-          req.ip,
-          req.headers["user-agent"] || "",
-          "download_endpoint",
-        ]
-      );
-
-      await connection.commit();
-      return res.download(filePath);
-    }
-
-    await connection.rollback();
-    res.status(404).send("Arquivo não encontrado no servidor.");
-  } catch (error) {
-    await connection.rollback();
-    console.error("Erro ao baixar ebook:", error);
-    res.status(500).json({ message: "Erro interno no servidor." });
-  } finally {
-    if (connection) connection.release();
-  }
+export const downloadEbook = (_req, res) => {
+  return res.status(403).json({ message: "Download de ebooks não é permitido." });
 };
