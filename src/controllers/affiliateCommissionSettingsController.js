@@ -20,6 +20,8 @@ export const fetchCommissionSettings = async (_req, res) => {
         level1_cents: row.level1_cents,
         level2_enabled: row.level2_enabled,
         level2_cents: row.level2_cents,
+        subscriber_enabled: row.subscriber_enabled,
+        subscriber_cents: row.subscriber_cents,
       };
       return acc;
     }, {});
@@ -46,8 +48,10 @@ export const updateCommissionSettings = async (req, res) => {
   const level1Cents = parseCents(req.body.level1_cents);
   const level2Cents = parseCents(req.body.level2_cents);
   const level2Enabled = req.body.level2_enabled ? 1 : 0;
+  const subscriberCents = parseCents(req.body.subscriber_cents ?? 0);
+  const subscriberEnabled = req.body.subscriber_enabled ? 1 : 0;
 
-  if (level1Cents === null || level2Cents === null) {
+  if (level1Cents === null || level2Cents === null || subscriberCents === null) {
     return res
       .status(400)
       .json({ message: "Valores invalidos para configuracao de comissao." });
@@ -58,6 +62,8 @@ export const updateCommissionSettings = async (req, res) => {
       level1_cents: level1Cents,
       level2_enabled: level2Enabled,
       level2_cents: level2Cents,
+      subscriber_enabled: subscriberEnabled,
+      subscriber_cents: subscriberCents,
     });
     res.json({ role: updated.role, settings: updated });
   } catch (error) {

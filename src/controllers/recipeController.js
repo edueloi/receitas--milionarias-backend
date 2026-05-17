@@ -19,6 +19,7 @@ export const createRecipe = async (req, res) => {
       tempo_cozimento_min,
       porcoes,
       status,
+      visibilidade,
       calorias_kcal,
       proteinas_g,
       carboidratos_g,
@@ -48,7 +49,7 @@ export const createRecipe = async (req, res) => {
       id_midia_principal = mediaResult.insertId;
     }
 
-    const recipeSql = `INSERT INTO receitas (titulo, resumo, id_categoria, id_usuario_criador, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status, calorias_kcal, proteinas_g, carboidratos_g, gorduras_g, id_midia_principal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const recipeSql = `INSERT INTO receitas (titulo, resumo, id_categoria, id_usuario_criador, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status, visibilidade, calorias_kcal, proteinas_g, carboidratos_g, gorduras_g, id_midia_principal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [recipeResult] = await connection.query(recipeSql, [
       titulo,
       resumo,
@@ -60,6 +61,7 @@ export const createRecipe = async (req, res) => {
       tempo_cozimento_min,
       porcoes,
       status || "pendente",
+      visibilidade || "publico",
       calorias_kcal,
       proteinas_g,
       carboidratos_g,
@@ -276,6 +278,7 @@ export const updateRecipe = async (req, res) => {
       tempo_cozimento_min,
       porcoes,
       status,
+      visibilidade,
       calorias_kcal,
       proteinas_g,
       carboidratos_g,
@@ -381,6 +384,10 @@ export const updateRecipe = async (req, res) => {
     if (typeof status !== "undefined") {
       fieldsToUpdate.push("status = ?");
       values.push(status);
+    }
+    if (typeof visibilidade !== "undefined") {
+      fieldsToUpdate.push("visibilidade = ?");
+      values.push(visibilidade);
     }
     if (typeof calorias_kcal !== "undefined") {
       fieldsToUpdate.push("calorias_kcal = ?");

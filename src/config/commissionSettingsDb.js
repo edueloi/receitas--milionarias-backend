@@ -29,8 +29,8 @@ export const PERMISSION_ROLE_MAP = {
 };
 
 const DEFAULT_SETTINGS = [
-  { role: "afiliado", level1_cents: 990, level2_enabled: 0, level2_cents: 0 },
-  { role: "afiliado pro", level1_cents: 990, level2_enabled: 1, level2_cents: 300 },
+  { role: "afiliado", level1_cents: 990, level2_enabled: 0, level2_cents: 0, subscriber_enabled: 0, subscriber_cents: 0 },
+  { role: "afiliado pro", level1_cents: 990, level2_enabled: 1, level2_cents: 300, subscriber_enabled: 0, subscriber_cents: 0 },
 ];
 
 export const normalizeRoleName = (role) => {
@@ -72,20 +72,28 @@ export async function initCommissionSettingsDb() {
       level1_cents INTEGER NOT NULL DEFAULT 990,
       level2_enabled INTEGER NOT NULL DEFAULT 0,
       level2_cents INTEGER NOT NULL DEFAULT 0,
+      subscriber_enabled INTEGER NOT NULL DEFAULT 0,
+      subscriber_cents INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
+  // Adiciona colunas novas se a tabela já existia sem elas
+  await run(`ALTER TABLE affiliate_commission_settings ADD COLUMN subscriber_enabled INTEGER NOT NULL DEFAULT 0`).catch(() => {});
+  await run(`ALTER TABLE affiliate_commission_settings ADD COLUMN subscriber_cents INTEGER NOT NULL DEFAULT 0`).catch(() => {});
+
   for (const settings of DEFAULT_SETTINGS) {
     await run(
       `INSERT OR IGNORE INTO affiliate_commission_settings
-        (role, level1_cents, level2_enabled, level2_cents)
-       VALUES (?, ?, ?, ?)`,
+        (role, level1_cents, level2_enabled, level2_cents, subscriber_enabled, subscriber_cents)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         settings.role,
         settings.level1_cents,
         settings.level2_enabled,
         settings.level2_cents,
+        settings.subscriber_enabled,
+        settings.subscriber_cents,
       ]
     );
   }
@@ -94,7 +102,7 @@ export async function initCommissionSettingsDb() {
 export async function getCommissionSettingsForRole(role) {
   const normalized = normalizeRoleName(role);
   const row = await get(
-    "SELECT role, level1_cents, level2_enabled, level2_cents FROM affiliate_commission_settings WHERE role = ?",
+    "SELECT role, level1_cents, level2_enabled, level2_cents, subscriber_enabled, subscriber_cents FROM affiliate_commission_settings WHERE role = ?",
     [normalized]
   );
 
@@ -107,12 +115,14 @@ export async function getCommissionSettingsForRole(role) {
     level1_cents: fallback.level1_cents,
     level2_enabled: fallback.level2_enabled,
     level2_cents: fallback.level2_cents,
+    subscriber_enabled: fallback.subscriber_enabled,
+    subscriber_cents: fallback.subscriber_cents,
   };
 }
 
 export async function getAllCommissionSettings() {
   return all(
-    "SELECT role, level1_cents, level2_enabled, level2_cents FROM affiliate_commission_settings ORDER BY role ASC"
+    "SELECT role, level1_cents, level2_enabled, level2_cents, subscriber_enabled, subscriber_cents FROM affiliate_commission_settings ORDER BY role ASC"
   );
 }
 
@@ -121,12 +131,14 @@ export async function upsertCommissionSettings(role, payload) {
   await run(
     `
       INSERT INTO affiliate_commission_settings
-        (role, level1_cents, level2_enabled, level2_cents, updated_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        (role, level1_cents, level2_enabled, level2_cents, subscriber_enabled, subscriber_cents, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(role) DO UPDATE SET
         level1_cents = excluded.level1_cents,
         level2_enabled = excluded.level2_enabled,
         level2_cents = excluded.level2_cents,
+        subscriber_enabled = excluded.subscriber_enabled,
+        subscriber_cents = excluded.subscriber_cents,
         updated_at = CURRENT_TIMESTAMP
     `,
     [
@@ -134,6 +146,8 @@ export async function upsertCommissionSettings(role, payload) {
       payload.level1_cents,
       payload.level2_enabled,
       payload.level2_cents,
+      payload.subscriber_enabled ?? 0,
+      payload.subscriber_cents ?? 0,
     ]
   );
 
