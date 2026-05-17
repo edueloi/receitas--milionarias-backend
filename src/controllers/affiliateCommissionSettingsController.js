@@ -2,7 +2,9 @@
 import {
   getAllCommissionSettings,
   getCommissionSettingsForRole,
+  getSelectedSubscribers,
   normalizeRoleName,
+  setSelectedSubscribers,
   upsertCommissionSettings,
 } from "../config/commissionSettingsDb.js";
 
@@ -40,6 +42,30 @@ export const fetchCommissionSettingsByRole = async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar configuracoes por cargo:", error);
     res.status(500).json({ message: "Erro interno ao buscar configuracoes." });
+  }
+};
+
+export const fetchSelectedSubscribers = async (_req, res) => {
+  try {
+    const rows = await getSelectedSubscribers();
+    res.json(rows);
+  } catch (error) {
+    console.error("Erro ao buscar assinantes selecionados:", error);
+    res.status(500).json({ message: "Erro interno ao buscar assinantes." });
+  }
+};
+
+export const saveSelectedSubscribers = async (req, res) => {
+  const ids = req.body.ids;
+  if (!Array.isArray(ids)) {
+    return res.status(400).json({ message: "ids deve ser um array." });
+  }
+  try {
+    await setSelectedSubscribers(ids.map(Number).filter(Boolean));
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao salvar assinantes selecionados:", error);
+    res.status(500).json({ message: "Erro interno ao salvar assinantes." });
   }
 };
 

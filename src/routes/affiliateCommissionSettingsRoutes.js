@@ -5,6 +5,8 @@ import { adminMiddleware } from "../middleware/adminMiddleware.js";
 import {
   fetchCommissionSettings,
   fetchCommissionSettingsByRole,
+  fetchSelectedSubscribers,
+  saveSelectedSubscribers,
   updateCommissionSettings,
 } from "../controllers/affiliateCommissionSettingsController.js";
 
@@ -15,6 +17,20 @@ router.get(
   authMiddleware,
   adminMiddleware,
   fetchCommissionSettings
+);
+
+router.get(
+  "/affiliate-commission-settings/subscribers",
+  authMiddleware,
+  adminMiddleware,
+  fetchSelectedSubscribers
+);
+
+router.post(
+  "/affiliate-commission-settings/subscribers",
+  authMiddleware,
+  adminMiddleware,
+  saveSelectedSubscribers
 );
 
 router.get(

@@ -78,6 +78,13 @@ export async function initCommissionSettingsDb() {
     )
   `);
 
+  await run(`
+    CREATE TABLE IF NOT EXISTS commission_selected_subscribers (
+      id_usuario INTEGER PRIMARY KEY,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Adiciona colunas novas se a tabela já existia sem elas
   await run(`ALTER TABLE affiliate_commission_settings ADD COLUMN subscriber_enabled INTEGER NOT NULL DEFAULT 0`).catch(() => {});
   await run(`ALTER TABLE affiliate_commission_settings ADD COLUMN subscriber_cents INTEGER NOT NULL DEFAULT 0`).catch(() => {});
@@ -124,6 +131,20 @@ export async function getAllCommissionSettings() {
   return all(
     "SELECT role, level1_cents, level2_enabled, level2_cents, subscriber_enabled, subscriber_cents FROM affiliate_commission_settings ORDER BY role ASC"
   );
+}
+
+export async function getSelectedSubscribers() {
+  return all("SELECT id_usuario FROM commission_selected_subscribers ORDER BY id_usuario ASC");
+}
+
+export async function setSelectedSubscribers(ids) {
+  await run("DELETE FROM commission_selected_subscribers");
+  for (const id of ids) {
+    await run(
+      "INSERT OR IGNORE INTO commission_selected_subscribers (id_usuario) VALUES (?)",
+      [id]
+    );
+  }
 }
 
 export async function upsertCommissionSettings(role, payload) {

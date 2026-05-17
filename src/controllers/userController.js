@@ -179,7 +179,7 @@ export const loginUser = async (req, res) => {
 export const getAllUsers = async (req, res) => {
   try {
     // Exemplo simples de autorização
-    if (req.user.role !== 1) { // 1 = admin (ajuste conforme sua tabela de permissões)
+    if (Number(req.user.role) !== 1) { // 1 = admin (ajuste conforme sua tabela de permissões)
       return res.status(403).json({ message: "Acesso negado. Apenas administradores podem listar todos os usuários." });
     }
 
