@@ -282,14 +282,16 @@ export const getUserProfile = async (req, res) => {
         const userId = req.user.id;
         
         const sql = `
-            SELECT 
-                u.id, u.nome, u.sobrenome, u.email, u.telefone, 
-                u.endereco, u.numero_endereco, u.complemento, u.bairro, 
+            SELECT
+                u.id, u.nome, u.sobrenome, u.email, u.telefone,
+                u.endereco, u.numero_endereco, u.complemento, u.bairro,
                 u.cep, u.cidade, u.estado, u.biografia, u.profissao, u.escolaridade,
                 u.foto_perfil_url,
                 u.stripe_account_id,
                 u.codigo_afiliado_proprio,
                 u.id_afiliado_indicador,
+                u.link_site, u.link_instagram, u.link_facebook,
+                u.link_youtube, u.link_linkedin, u.link_tiktok,
                 u.data_criacao AS registrationDate,
                 indicador.nome as nome_indicador,
                 p.id AS id_permissao,
@@ -330,7 +332,8 @@ export const updateUserProfile = async (req, res) => {
         'nome', 'sobrenome', 'data_nascimento', 'telefone', 'rg',
         'endereco', 'numero_endereco', 'complemento', 'bairro', 'cep', 'cidade', 'estado',
         'biografia', 'profissao', 'escolaridade', 'nome_exibicao', 'sexo', 'estado_civil',
-        'estado_origem', 'pais_origem', 'preferencias'
+        'estado_origem', 'pais_origem', 'preferencias',
+        'link_site', 'link_instagram', 'link_facebook', 'link_youtube', 'link_linkedin', 'link_tiktok'
     ];
 
     try {
@@ -844,7 +847,7 @@ export const deleteUser = async (req, res) => {
         // 🔔 Notificar admin sobre exclusão
         await notifyUserDeletion(`${userToDelete.nome} ${userToDelete.sobrenome}`, userToDelete.email);
 
-        res.json({ 
+        res.json({
             message: 'Usuário deletado com sucesso.',
             deletedUser: {
                 id: userToDelete.id,
@@ -858,4 +861,68 @@ export const deleteUser = async (req, res) => {
     }
 };
 
+// --- PÁGINA PÚBLICA DE PRODUTOR ---
+// GET /api/producers/:id  (sem autenticação)
+export const getProducerPublicProfile = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [users] = await db.query(`
+            SELECT
+                u.id,
+                u.nome,
+                u.sobrenome,
+                u.biografia,
+                u.foto_perfil_url,
+                u.link_site,
+                u.link_instagram,
+                u.link_facebook,
+                u.link_youtube,
+                u.link_linkedin,
+                u.link_tiktok,
+                p.nome AS permissao
+            FROM usuarios u
+            JOIN permissoes p ON u.id_permissao = p.id
+            WHERE u.id = ? AND u.id_status = 1
+        `, [id]);
+
+        if (users.length === 0) {
+            return res.status(404).json({ message: 'Produtor não encontrado.' });
+        }
+
+        const produtor = users[0];
+        if (produtor.foto_perfil_url) {
+            produtor.foto_perfil_url = String(produtor.foto_perfil_url).replace(/\\/g, '/');
+        }
+
+        // Receitas públicas do produtor
+        const [receitas] = await db.query(`
+            SELECT
+                r.id,
+                r.titulo,
+                r.resumo,
+                r.dificuldade,
+                r.tempo_preparo_min,
+                m.url_arquivo AS imagem_url,
+                c.nome AS categoria_nome
+            FROM receitas r
+            LEFT JOIN midia m ON r.id_midia_principal = m.id
+            LEFT JOIN categorias_receitas c ON r.id_categoria = c.id
+            WHERE r.id_usuario_criador = ?
+              AND r.status = 'ativo'
+              AND r.aparece_no_site = 1
+            ORDER BY r.id DESC
+        `, [id]);
+
+        const normalizeUrl = (url) => url ? String(url).replace(/\\/g, '/') : null;
+
+        res.json({
+            produtor: produtor,
+            receitas: receitas.map(r => ({ ...r, imagem_url: normalizeUrl(r.imagem_url) })),
+        });
+    } catch (error) {
+        console.error('Erro ao buscar perfil público do produtor:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.' });
+    }
+};
 

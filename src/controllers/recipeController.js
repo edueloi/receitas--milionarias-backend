@@ -20,6 +20,7 @@ export const createRecipe = async (req, res) => {
       porcoes,
       status,
       visibilidade,
+      aparece_no_site,
       calorias_kcal,
       proteinas_g,
       carboidratos_g,
@@ -49,7 +50,7 @@ export const createRecipe = async (req, res) => {
       id_midia_principal = mediaResult.insertId;
     }
 
-    const recipeSql = `INSERT INTO receitas (titulo, resumo, id_categoria, id_usuario_criador, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status, visibilidade, calorias_kcal, proteinas_g, carboidratos_g, gorduras_g, id_midia_principal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const recipeSql = `INSERT INTO receitas (titulo, resumo, id_categoria, id_usuario_criador, id_produtor, dificuldade, tempo_preparo_min, tempo_cozimento_min, porcoes, status, visibilidade, aparece_no_site, calorias_kcal, proteinas_g, carboidratos_g, gorduras_g, id_midia_principal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [recipeResult] = await connection.query(recipeSql, [
       titulo,
       resumo,
@@ -62,6 +63,7 @@ export const createRecipe = async (req, res) => {
       porcoes,
       status || "pendente",
       visibilidade || "publico",
+      aparece_no_site !== undefined ? (aparece_no_site ? 1 : 0) : 1,
       calorias_kcal,
       proteinas_g,
       carboidratos_g,
@@ -279,6 +281,7 @@ export const updateRecipe = async (req, res) => {
       porcoes,
       status,
       visibilidade,
+      aparece_no_site,
       calorias_kcal,
       proteinas_g,
       carboidratos_g,
@@ -388,6 +391,10 @@ export const updateRecipe = async (req, res) => {
     if (typeof visibilidade !== "undefined") {
       fieldsToUpdate.push("visibilidade = ?");
       values.push(visibilidade);
+    }
+    if (typeof aparece_no_site !== "undefined") {
+      fieldsToUpdate.push("aparece_no_site = ?");
+      values.push(aparece_no_site ? 1 : 0);
     }
     if (typeof calorias_kcal !== "undefined") {
       fieldsToUpdate.push("calorias_kcal = ?");
@@ -503,6 +510,7 @@ export const getAllRecipes = async (req, res) => {
       categorias,
       tags: tagsQuery,
       status,
+      produtor,
       sort = "r.id",
       order = "DESC",
     } = req.query;
@@ -521,6 +529,19 @@ export const getAllRecipes = async (req, res) => {
         whereParams.push("ativo");
       }
     }
+
+    // Filtro por produtor (id do usuário criador)
+    if (produtor) {
+      whereClause += " AND r.id_usuario_criador = ?";
+      whereParams.push(parseInt(produtor, 10));
+    }
+
+    // No site público, só exibe receitas marcadas para aparecer no site
+    const apenasDoSite = req.query.site === 'true';
+    if (apenasDoSite) {
+      whereClause += " AND r.aparece_no_site = 1";
+    }
+
     if (search) {
       whereClause += " AND (r.titulo LIKE ? OR r.resumo LIKE ?)";
       whereParams.push(`%${search}%`, `%${search}%`);

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "cross-env NODE_ENV=development nodemon -r ./config-loader.js src/index.js",
     "start": "cross-env NODE_ENV=production node -r ./config-loader.js src/index.js",
+    "migrate": "cross-env NODE_ENV=development node --loader ./config-loader.js run-migration.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

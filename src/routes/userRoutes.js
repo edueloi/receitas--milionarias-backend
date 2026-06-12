@@ -15,7 +15,8 @@ import {
     syncUserStatusFromStripe,
     getReferredUsers,
     updatePixKey,
-    deleteUser
+    deleteUser,
+    getProducerPublicProfile
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
@@ -503,5 +504,8 @@ router.get("/users/referred", authMiddleware, getReferredUsers);
  *         description: Usuário não encontrado
  */
 router.delete("/users/:id", authMiddleware, deleteUser);
+
+// Página pública de produtor (sem autenticação)
+router.get("/producers/:id", getProducerPublicProfile);
 
 export default router;
