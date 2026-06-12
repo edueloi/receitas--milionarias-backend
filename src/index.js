@@ -73,7 +73,7 @@ initCommissionPaymentsDb().catch((error) => {
 app.set("trust proxy", true);
 
 // -------------------- Middlewares base --------------------
-const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "https://dashboard.receitasmilionarias.com.br,https://cursos.receitasmilionarias.com.br")
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "https://dashboard.receitasmilionarias.com.br,https://cursos.receitasmilionarias.com.br,https://receitasmilionarias.com.br,https://www.receitasmilionarias.com.br")
   .split(",")
   .map((o) => o.trim());
 
