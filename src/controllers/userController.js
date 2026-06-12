@@ -863,6 +863,41 @@ export const deleteUser = async (req, res) => {
 
 // --- PÁGINA PÚBLICA DE PRODUTOR ---
 // GET /api/producers/:id  (sem autenticação)
+// Lista pública de produtores que têm pelo menos 1 receita publicada no site
+export const getPublicProducers = async (req, res) => {
+    try {
+        const [produtores] = await db.query(`
+            SELECT
+                u.id,
+                u.nome,
+                u.sobrenome,
+                u.foto_perfil_url,
+                u.biografia,
+                COUNT(r.id) AS total_receitas
+            FROM usuarios u
+            JOIN receitas r ON r.id_usuario_criador = u.id
+            WHERE u.id_status = 1
+              AND r.status = 'ativo'
+              AND r.aparece_no_site = 1
+            GROUP BY u.id, u.nome, u.sobrenome, u.foto_perfil_url, u.biografia
+            HAVING total_receitas > 0
+            ORDER BY total_receitas DESC, u.nome ASC
+        `);
+
+        const normalizeUrl = (url) => (url ? String(url).replace(/\\/g, '/') : null);
+
+        res.json(
+            produtores.map((p) => ({
+                ...p,
+                foto_perfil_url: normalizeUrl(p.foto_perfil_url),
+            }))
+        );
+    } catch (error) {
+        console.error('Erro ao listar produtores públicos:', error);
+        res.status(500).json({ message: 'Erro interno no servidor.' });
+    }
+};
+
 export const getProducerPublicProfile = async (req, res) => {
     try {
         const { id } = req.params;

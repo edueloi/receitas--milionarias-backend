@@ -16,7 +16,8 @@ import {
     getReferredUsers,
     updatePixKey,
     deleteUser,
-    getProducerPublicProfile
+    getProducerPublicProfile,
+    getPublicProducers
 } from '../controllers/userController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js'; // Importar o middleware de upload
@@ -505,7 +506,8 @@ router.get("/users/referred", authMiddleware, getReferredUsers);
  */
 router.delete("/users/:id", authMiddleware, deleteUser);
 
-// Página pública de produtor (sem autenticação)
+// Páginas públicas de produtores (sem autenticação)
+router.get("/producers", getPublicProducers);
 router.get("/producers/:id", getProducerPublicProfile);
 
 export default router;
