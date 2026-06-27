@@ -20,3 +20,15 @@ yarn-error.log*
 
 # Database dumps
 dump.sql
+*.sql.bak
+*.js.bak
+
+# Uploads (arquivos de produção, não vão para o git)
+uploads/
+
+# SQLite databases locais
+data/*.db
+
+# PM2 ecosystem com credenciais
+ecosystem.config.js
+ecosystem.config.cjs
