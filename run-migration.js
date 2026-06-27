@@ -55,7 +55,8 @@ async function addIndex(table, indexName, columns) {
 }
 
 // Tabela receitas
-await addColumn('receitas',  'aparece_no_site', 'TINYINT(1) NOT NULL DEFAULT 1');
+await addColumn('receitas', 'visibilidade',   "VARCHAR(20) NOT NULL DEFAULT 'publico'");
+await addColumn('receitas', 'aparece_no_site', 'TINYINT(1) NOT NULL DEFAULT 1');
 
 // Tabela usuarios — redes sociais
 await addColumn('usuarios', 'link_site',      "VARCHAR(255) NULL DEFAULT NULL");

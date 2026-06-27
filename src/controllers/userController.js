@@ -698,11 +698,21 @@ export const forgotPassword = async (req, res) => {
             </div>
         `;
 
-        await sendEmail({
-            to: email,
-            subject: "Redefinir senha - Receitas Milionarias",
-            html,
-        });
+        // O token já está salvo no banco. O envio de e-mail é o canal de entrega:
+        // se o provedor (SendGrid) falhar, NÃO devemos derrubar a requisição com 500,
+        // senão o usuário fica sem conseguir recuperar a senha. Logamos e seguimos.
+        try {
+            await sendEmail({
+                to: email,
+                subject: "Redefinir senha - Receitas Milionarias",
+                html,
+            });
+        } catch (mailError) {
+            console.error(
+                "Erro ao ENVIAR e-mail de recuperacao (token foi gerado mesmo assim):",
+                mailError?.response?.body || mailError?.message || mailError
+            );
+        }
 
         res.json({ message: 'Se o email estiver registrado, um link de redefinicao sera enviado.' });
     } catch (error) {
