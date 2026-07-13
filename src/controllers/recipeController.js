@@ -145,6 +145,12 @@ export const getRecipeById = async (req, res) => {
           u.codigo_afiliado_proprio AS criador_codigo_afiliado,
           u.id_afiliado_indicador AS criador_id_afiliado,
           u.foto_perfil_url AS criador_foto_url,
+          u.link_instagram AS criador_link_instagram,
+          u.link_facebook AS criador_link_facebook,
+          u.link_youtube AS criador_link_youtube,
+          u.link_tiktok AS criador_link_tiktok,
+          u.link_linkedin AS criador_link_linkedin,
+          u.link_site AS criador_link_site,
           m.url_arquivo AS imagem_url,
           c.id AS categoria_id,
           c.nome AS categoria_nome,
@@ -218,6 +224,12 @@ export const getRecipeById = async (req, res) => {
       foto_perfil_url: receita.criador_foto_url
         ? String(receita.criador_foto_url).replace(/\\/g, "/")
         : null,
+      link_instagram: receita.criador_link_instagram || null,
+      link_facebook:  receita.criador_link_facebook  || null,
+      link_youtube:   receita.criador_link_youtube   || null,
+      link_tiktok:    receita.criador_link_tiktok    || null,
+      link_linkedin:  receita.criador_link_linkedin  || null,
+      link_site:      receita.criador_link_site      || null,
     };
 
     const categoria = receita.categoria_id
